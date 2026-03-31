@@ -9,6 +9,7 @@ build/
 .venv/
 venv/
 env/
+.pytest_cache/
 
 # Environment
 .env
@@ -29,10 +30,13 @@ teensy/firmware/.pio/
 teensy/firmware/.pioenvs/
 teensy/firmware/.piolibdeps/
 
-# Media cache
+# Runtime data (on Pi)
 pi/media/
 pi/cache/
+pi/logs/
+
+# Untracked real config (contains secrets)
+pi/config/system.yaml
 
 # Logs
-pi/logs/
 *.log
