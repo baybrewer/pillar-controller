@@ -1,8 +1,27 @@
 // Pillar Controller — Frontend Application
 
-const API = '';  // Same origin
+const API = '';
 let ws = null;
 let state = {};
+
+// --- Auth ---
+
+function getToken() {
+  return localStorage.getItem('pillar_token') || '';
+}
+
+function setToken(token) {
+  localStorage.setItem('pillar_token', token);
+}
+
+function authHeaders() {
+  const token = getToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 // --- WebSocket ---
 
@@ -19,78 +38,69 @@ function connectWS() {
     setTimeout(connectWS, 2000);
   };
 
-  ws.onerror = () => {
-    ws.close();
-  };
+  ws.onerror = () => { ws.close(); };
 
   ws.onmessage = (evt) => {
-    try {
-      const data = JSON.parse(evt.data);
-      updateState(data);
-    } catch (e) {}
+    try { updateState(JSON.parse(evt.data)); } catch (e) {}
   };
 }
 
 function updateState(data) {
   state = { ...state, ...data };
 
-  // FPS
-  const fpsEl = document.getElementById('fps-display');
   if (data.actual_fps !== undefined) {
-    fpsEl.textContent = `${data.actual_fps} FPS`;
+    document.getElementById('fps-display').textContent = `${data.actual_fps} FPS`;
   }
 
-  // Scene name
-  const sceneEl = document.getElementById('current-scene-name');
   if (data.current_scene) {
-    sceneEl.textContent = data.current_scene.replace(/_/g, ' ');
+    document.getElementById('current-scene-name').textContent = data.current_scene.replace(/_/g, ' ');
   }
 
-  // Blackout button
-  const bbtn = document.getElementById('blackout-btn');
-  if (data.blackout) {
-    bbtn.classList.add('active');
-  } else {
-    bbtn.classList.remove('active');
+  if (data.blackout !== undefined) {
+    document.getElementById('blackout-on-btn').classList.toggle('active', data.blackout);
   }
 
-  // Brightness
-  if (data.brightness !== undefined) {
-    const slider = document.getElementById('brightness-slider');
-    slider.value = Math.round(data.brightness * 100);
-    document.getElementById('brightness-value').textContent = `${slider.value}%`;
-  }
-
-  // Audio meters
-  if (data.audio_level !== undefined) {
-    updateMeter('meter-bass', state.audio_bass || 0);
-    updateMeter('meter-mid', state.audio_mid || 0);
-    updateMeter('meter-high', state.audio_high || 0);
-  }
-}
-
-function updateMeter(id, value) {
-  const el = document.getElementById(id);
-  if (el) {
-    el.style.setProperty('--level', `${Math.min(100, value * 100)}%`);
-    const after = el.querySelector('::after');
-    // Use inline style on a child or pseudo approach
-    el.setAttribute('style', `--level: ${Math.min(100, value * 100)}%`);
+  // Brightness from WebSocket
+  if (data.brightness) {
+    const b = data.brightness;
+    if (b.manual_cap !== undefined) {
+      const slider = document.getElementById('brightness-slider');
+      slider.value = Math.round(b.manual_cap * 100);
+      document.getElementById('brightness-value').textContent = `${slider.value}%`;
+    }
+    if (b.auto_enabled !== undefined) {
+      document.getElementById('brightness-auto-toggle').checked = b.auto_enabled;
+    }
+    if (b.solar_phase) {
+      document.getElementById('brightness-phase').textContent = b.solar_phase;
+    }
+    if (b.effective_brightness !== undefined) {
+      document.getElementById('brightness-effective').textContent =
+        `Effective: ${Math.round(b.effective_brightness * 100)}%`;
+    }
   }
 }
 
 // --- API helpers ---
 
 async function api(method, path, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  const opts = { method, headers: authHeaders() };
   if (body) opts.body = JSON.stringify(body);
   try {
     const res = await fetch(`${API}${path}`, opts);
+    if (res.status === 401) {
+      showAuthBanner();
+      return null;
+    }
     return await res.json();
   } catch (e) {
     console.error(`API error: ${method} ${path}`, e);
     return null;
   }
+}
+
+function showAuthBanner() {
+  document.getElementById('auth-banner').classList.remove('hidden');
 }
 
 // --- Tab navigation ---
@@ -103,7 +113,6 @@ function initTabs() {
       tab.classList.add('active');
       document.getElementById(`panel-${tab.dataset.tab}`).classList.add('active');
 
-      // Load tab-specific data
       if (tab.dataset.tab === 'effects') loadEffects();
       if (tab.dataset.tab === 'media') loadMedia();
       if (tab.dataset.tab === 'audio') loadAudioDevices();
@@ -152,16 +161,12 @@ async function loadPresets() {
   const grid = document.getElementById('preset-grid');
   grid.innerHTML = '';
 
-  for (const [name, scene] of Object.entries(data)) {
+  for (const [name] of Object.entries(data)) {
     const btn = document.createElement('button');
     btn.textContent = name;
-    btn.addEventListener('click', () => loadPreset(name));
+    btn.addEventListener('click', () => api('POST', `/api/scenes/presets/load/${encodeURIComponent(name)}`));
     grid.appendChild(btn);
   }
-}
-
-async function loadPreset(name) {
-  await api('POST', `/api/scenes/presets/load/${encodeURIComponent(name)}`);
 }
 
 // --- Media ---
@@ -175,17 +180,11 @@ async function loadMedia() {
 
   for (const item of data.items) {
     const btn = document.createElement('button');
-    btn.textContent = `${item.name}\n${item.type} · ${item.frame_count}f`;
-    btn.addEventListener('click', () => playMedia(item.id));
+    btn.textContent = `${item.name}\n${item.type} | ${item.frame_count}f`;
+    btn.addEventListener('click', () => api('POST', `/api/media/play/${item.id}?loop=true&speed=1.0`));
     lib.appendChild(btn);
   }
 }
-
-async function playMedia(itemId) {
-  await api('POST', `/api/media/play/${itemId}?loop=true&speed=1.0`);
-}
-
-// --- Upload ---
 
 function initUpload() {
   const btn = document.getElementById('upload-btn');
@@ -202,11 +201,26 @@ function initUpload() {
     formData.append('file', file);
 
     try {
-      const res = await fetch('/api/media/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (data.status === 'ok') {
-        input.value = '';
-        loadMedia();
+      const token = getToken();
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/media/upload', {
+        method: 'POST',
+        body: formData,
+        headers,
+      });
+
+      if (res.status === 401) {
+        showAuthBanner();
+      } else if (res.status === 413) {
+        alert('File too large');
+      } else {
+        const data = await res.json();
+        if (data.status === 'ok') {
+          input.value = '';
+          loadMedia();
+        }
       }
     } catch (e) {
       console.error('Upload failed', e);
@@ -242,13 +256,11 @@ function initAudio() {
   });
 
   document.getElementById('audio-sensitivity').addEventListener('change', (e) => {
-    const val = e.target.value / 100;
-    api('POST', '/api/audio/config', { sensitivity: val });
+    api('POST', '/api/audio/config', { sensitivity: e.target.value / 100 });
   });
 
   document.getElementById('audio-gain').addEventListener('change', (e) => {
-    const val = e.target.value / 100;
-    api('POST', '/api/audio/config', { gain: val });
+    api('POST', '/api/audio/config', { gain: e.target.value / 100 });
   });
 }
 
@@ -279,7 +291,7 @@ async function loadSystemStatus() {
   document.getElementById('sys-firmware').textContent =
     data.transport?.caps?.firmware_version || '--';
   document.getElementById('sys-frames').textContent =
-    data.transport?.frames_sent?.toLocaleString() || '0';
+    data.render?.frames_sent?.toLocaleString() || '0';
 }
 
 function initSystem() {
@@ -311,22 +323,57 @@ function initBrightness() {
     display.textContent = `${slider.value}%`;
     clearTimeout(debounce);
     debounce = setTimeout(() => {
-      api('POST', '/api/display/brightness', { value: slider.value / 100 });
+      api('POST', '/api/brightness/config', { manual_cap: slider.value / 100 });
     }, 100);
+  });
+
+  document.getElementById('brightness-auto-toggle').addEventListener('change', (e) => {
+    api('POST', '/api/brightness/config', { auto_enabled: e.target.checked });
   });
 }
 
-// --- Blackout ---
+// --- Blackout (explicit on/off) ---
 
 function initBlackout() {
-  document.getElementById('blackout-btn').addEventListener('click', () => {
-    api('POST', '/api/display/blackout');
+  document.getElementById('blackout-on-btn').addEventListener('click', () => {
+    api('POST', '/api/display/blackout', { enabled: true });
+  });
+
+  document.getElementById('blackout-off-btn').addEventListener('click', () => {
+    api('POST', '/api/display/blackout', { enabled: false });
+  });
+}
+
+// --- Auth ---
+
+function initAuth() {
+  // Restore token if saved
+  const saved = getToken();
+  if (!saved) {
+    showAuthBanner();
+  }
+
+  document.getElementById('auth-save-btn').addEventListener('click', () => {
+    const token = document.getElementById('auth-token-input').value.trim();
+    if (token) {
+      setToken(token);
+      document.getElementById('auth-banner').classList.add('hidden');
+    }
+  });
+
+  document.getElementById('system-token-save').addEventListener('click', () => {
+    const token = document.getElementById('system-token-input').value.trim();
+    if (token) {
+      setToken(token);
+      alert('Token updated');
+    }
   });
 }
 
 // --- Init ---
 
 document.addEventListener('DOMContentLoaded', () => {
+  initAuth();
   initTabs();
   initBrightness();
   initBlackout();
