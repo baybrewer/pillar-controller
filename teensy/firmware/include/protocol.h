@@ -25,6 +25,7 @@ public:
     _code = 0;
     _block_remaining = 0;
     _started = false;
+    _pending_zero = false;
   }
 
   // Feed one byte. Returns true when a complete packet delimiter (0x00) is found.
