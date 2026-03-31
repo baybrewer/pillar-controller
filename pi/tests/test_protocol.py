@@ -6,8 +6,10 @@ import pytest
 from app.models.protocol import (
   build_packet, verify_packet, PacketType,
   cobs_encode, cobs_decode, frame_packet,
-  build_hello_payload, build_frame_payload, parse_caps_payload,
+  build_hello_payload, build_frame_payload, build_blackout_payload,
+  parse_caps_payload, parse_stats_payload,
   MAGIC, PROTOCOL_VERSION, HEADER_SIZE, CRC_SIZE,
+  STATS_PAYLOAD_SIZE, STATS_STRUCT_FMT,
 )
 
 
