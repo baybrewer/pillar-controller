@@ -5,30 +5,34 @@ FastAPI server — REST API + WebSocket + static file serving.
 import asyncio
 import json
 import logging
-import os
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from ..core.renderer import Renderer, RenderState
 from ..core.state import StateManager
+from ..core.brightness import BrightnessEngine
 from ..transport.usb import TeensyTransport
 from ..media.manager import MediaManager
 from ..audio.analyzer import AudioAnalyzer
 from ..effects.generative import EFFECTS
 from ..effects.audio_reactive import AUDIO_EFFECTS
-from ..effects.media_playback import MEDIA_EFFECTS, MediaPlayback
+from ..effects.media_playback import MediaPlayback
 from ..diagnostics.tests import DIAGNOSTIC_EFFECTS
 from ..models.protocol import TestPattern
+from .auth import create_auth_dependency
 
 logger = logging.getLogger(__name__)
 
 UI_DIR = Path(__file__).parent.parent / "ui"
+
+ALLOWED_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.mp4', '.mov', '.avi', '.webm', '.mkv'}
 
 
 # --- Pydantic models ---
@@ -37,8 +41,14 @@ class SceneRequest(BaseModel):
   effect: str
   params: dict = {}
 
-class BrightnessRequest(BaseModel):
-  value: float
+class BrightnessConfigRequest(BaseModel):
+  manual_cap: Optional[float] = None
+  auto_enabled: Optional[bool] = None
+  location: Optional[dict] = None
+  solar: Optional[dict] = None
+
+class BlackoutRequest(BaseModel):
+  enabled: bool
 
 class FPSRequest(BaseModel):
   value: int
@@ -62,34 +72,42 @@ def create_app(
   renderer: Renderer,
   render_state: RenderState,
   state_manager: StateManager,
+  brightness_engine: BrightnessEngine,
   media_manager: MediaManager,
   audio_analyzer: AudioAnalyzer,
+  config: dict,
 ) -> FastAPI:
 
   app = FastAPI(title="Pillar Controller", version="1.0.0")
 
+  max_upload_bytes = config.get('transport', {}).get('max_upload_mb', 50) * 1024 * 1024
+
+  # Auth dependency
+  require_auth = create_auth_dependency(config)
+
   # WebSocket clients
   ws_clients: set[WebSocket] = set()
 
-  # --- System ---
+  # --- System (public reads, protected writes) ---
 
   @app.get("/api/system/status")
   async def system_status():
     return {
-      'transport': transport.get_status(),
+      'transport': {'connected': transport.connected, 'port': transport.serial.port if transport.serial else None},
       'render': render_state.to_dict(),
-      'scenes': list(state_manager.list_scenes().keys()),
+      'brightness': brightness_engine.get_status(),
+      'scenes_count': len(state_manager.list_scenes()),
       'media_count': len(media_manager.items),
     }
 
-  @app.post("/api/system/reboot")
+  @app.post("/api/system/reboot", dependencies=[Depends(require_auth)])
   async def system_reboot():
-    os.system("sudo reboot")
+    subprocess.Popen(["sudo", "reboot"])
     return {"status": "rebooting"}
 
-  @app.post("/api/system/restart-app")
+  @app.post("/api/system/restart-app", dependencies=[Depends(require_auth)])
   async def restart_app():
-    os.system("sudo systemctl restart pillar")
+    subprocess.Popen(["sudo", "systemctl", "restart", "pillar"])
     return {"status": "restarting"}
 
   # --- Scenes ---
@@ -105,7 +123,7 @@ def create_app(
       all_effects[name] = {'type': 'diagnostic'}
     return {'effects': all_effects, 'current': render_state.current_scene}
 
-  @app.post("/api/scenes/activate")
+  @app.post("/api/scenes/activate", dependencies=[Depends(require_auth)])
   async def activate_scene(req: SceneRequest):
     success = renderer.set_scene(req.effect, req.params)
     if success:
@@ -119,12 +137,12 @@ def create_app(
   async def list_presets():
     return state_manager.list_scenes()
 
-  @app.post("/api/scenes/presets/save")
+  @app.post("/api/scenes/presets/save", dependencies=[Depends(require_auth)])
   async def save_preset(req: SceneSaveRequest):
     state_manager.save_scene(req.name, req.effect, req.params)
     return {"status": "saved"}
 
-  @app.post("/api/scenes/presets/load/{name}")
+  @app.post("/api/scenes/presets/load/{name}", dependencies=[Depends(require_auth)])
   async def load_preset(name: str):
     scene = state_manager.load_scene(name)
     if not scene:
@@ -137,7 +155,7 @@ def create_app(
       return {"status": "ok"}
     raise HTTPException(500, "Failed to activate preset")
 
-  @app.delete("/api/scenes/presets/{name}")
+  @app.delete("/api/scenes/presets/{name}", dependencies=[Depends(require_auth)])
   async def delete_preset(name: str):
     if state_manager.delete_scene(name):
       return {"status": "deleted"}
@@ -145,25 +163,48 @@ def create_app(
 
   # --- Display control ---
 
-  @app.post("/api/display/brightness")
-  async def set_brightness(req: BrightnessRequest):
-    render_state.brightness = max(0.0, min(1.0, req.value))
-    state_manager.brightness = render_state.brightness
-    await broadcast_state()
-    return {"brightness": render_state.brightness}
+  @app.get("/api/brightness/status")
+  async def brightness_status():
+    return brightness_engine.get_status()
 
-  @app.post("/api/display/fps")
+  @app.post("/api/brightness/config", dependencies=[Depends(require_auth)])
+  async def update_brightness(req: BrightnessConfigRequest):
+    update = {}
+    if req.manual_cap is not None:
+      update['manual_cap'] = req.manual_cap
+      state_manager.brightness_manual_cap = req.manual_cap
+    if req.auto_enabled is not None:
+      update['auto_enabled'] = req.auto_enabled
+      state_manager.brightness_auto_enabled = req.auto_enabled
+    if req.location is not None:
+      update['location'] = req.location
+    if req.solar is not None:
+      update['solar'] = req.solar
+    if update:
+      brightness_engine.update_config(update)
+    await broadcast_state()
+    return brightness_engine.get_status()
+
+  @app.post("/api/display/brightness", dependencies=[Depends(require_auth)])
+  async def set_brightness(req: BrightnessConfigRequest):
+    """Legacy endpoint — sets manual cap."""
+    if req.manual_cap is not None:
+      brightness_engine.manual_cap = req.manual_cap
+      state_manager.brightness_manual_cap = req.manual_cap
+    await broadcast_state()
+    return brightness_engine.get_status()
+
+  @app.post("/api/display/fps", dependencies=[Depends(require_auth)])
   async def set_fps(req: FPSRequest):
     render_state.target_fps = max(1, min(90, req.value))
     state_manager.target_fps = render_state.target_fps
     await broadcast_state()
     return {"fps": render_state.target_fps}
 
-  @app.post("/api/display/blackout")
-  async def toggle_blackout():
-    render_state.blackout = not render_state.blackout
-    if render_state.blackout:
-      await transport.send_blackout()
+  @app.post("/api/display/blackout", dependencies=[Depends(require_auth)])
+  async def set_blackout(req: BlackoutRequest):
+    render_state.blackout = req.enabled
+    await transport.send_blackout(req.enabled)
     await broadcast_state()
     return {"blackout": render_state.blackout}
 
@@ -173,29 +214,40 @@ def create_app(
   async def list_media():
     return {"items": media_manager.list_items()}
 
-  @app.post("/api/media/upload")
+  @app.post("/api/media/upload", dependencies=[Depends(require_auth)])
   async def upload_media(file: UploadFile = File(...)):
-    # Save to temp file
-    suffix = Path(file.filename or "upload").suffix
+    # Validate extension
+    suffix = Path(file.filename or "upload").suffix.lower()
+    if suffix not in ALLOWED_EXTENSIONS:
+      raise HTTPException(400, f"Unsupported file type: {suffix}")
+
+    # Stream to temp file with size limit
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-      content = await file.read()
-      tmp.write(content)
       tmp_path = Path(tmp.name)
+      total_bytes = 0
+      while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+          break
+        total_bytes += len(chunk)
+        if total_bytes > max_upload_bytes:
+          tmp_path.unlink(missing_ok=True)
+          raise HTTPException(413, f"File exceeds maximum upload size ({max_upload_bytes // (1024*1024)}MB)")
+        tmp.write(chunk)
 
     try:
       item = await media_manager.import_file(tmp_path, file.filename or "upload")
       if item:
         return {"status": "ok", "item": item.to_dict()}
-      raise HTTPException(400, "Unsupported media type")
+      raise HTTPException(400, "Failed to import media")
     finally:
       tmp_path.unlink(missing_ok=True)
 
-  @app.post("/api/media/play/{item_id}")
+  @app.post("/api/media/play/{item_id}", dependencies=[Depends(require_auth)])
   async def play_media(item_id: str, loop: bool = True, speed: float = 1.0):
     if item_id not in media_manager.items:
       raise HTTPException(404, f"Media not found: {item_id}")
     params = {'item_id': item_id, 'loop': loop, 'speed': speed}
-    # Create media playback effect
     effect = MediaPlayback(
       width=renderer.internal_width,
       height=172,
@@ -207,7 +259,7 @@ def create_app(
     await broadcast_state()
     return {"status": "playing", "item_id": item_id}
 
-  @app.delete("/api/media/{item_id}")
+  @app.delete("/api/media/{item_id}", dependencies=[Depends(require_auth)])
   async def delete_media(item_id: str):
     if media_manager.delete_item(item_id):
       return {"status": "deleted"}
@@ -219,7 +271,7 @@ def create_app(
   async def list_audio_devices():
     return {"devices": audio_analyzer.list_devices()}
 
-  @app.post("/api/audio/config")
+  @app.post("/api/audio/config", dependencies=[Depends(require_auth)])
   async def configure_audio(req: AudioConfigRequest):
     audio_analyzer.sensitivity = req.sensitivity
     audio_analyzer.gain = req.gain
@@ -227,27 +279,25 @@ def create_app(
       audio_analyzer.set_device(req.device_index)
     return {"status": "ok"}
 
-  @app.post("/api/audio/start")
+  @app.post("/api/audio/start", dependencies=[Depends(require_auth)])
   async def start_audio():
     audio_analyzer.start()
     return {"status": "started"}
 
-  @app.post("/api/audio/stop")
+  @app.post("/api/audio/stop", dependencies=[Depends(require_auth)])
   async def stop_audio():
     audio_analyzer.stop()
     return {"status": "stopped"}
 
   # --- Diagnostics ---
 
-  @app.post("/api/diagnostics/test-pattern")
+  @app.post("/api/diagnostics/test-pattern", dependencies=[Depends(require_auth)])
   async def run_test_pattern(req: TestPatternRequest):
-    # Check if it's a Teensy-side pattern
     teensy_patterns = {p.name.lower(): p.value for p in TestPattern}
     if req.pattern.lower() in teensy_patterns:
       await transport.send_test_pattern(teensy_patterns[req.pattern.lower()])
       return {"status": "ok", "target": "teensy"}
 
-    # Check Pi-side diagnostic effects
     if req.pattern in DIAGNOSTIC_EFFECTS:
       renderer.set_scene(req.pattern)
       return {"status": "ok", "target": "pi"}
@@ -260,6 +310,7 @@ def create_app(
     return {
       'transport': transport.get_status(),
       'render': render_state.to_dict(),
+      'brightness': brightness_engine.get_status(),
       'teensy': teensy_stats,
     }
 
@@ -274,10 +325,8 @@ def create_app(
     await ws.accept()
     ws_clients.add(ws)
     try:
-      # Send initial state
       await ws.send_json(render_state.to_dict())
       while True:
-        # Keep connection alive, handle client messages
         data = await ws.receive_text()
         try:
           msg = json.loads(data)
@@ -294,10 +343,13 @@ def create_app(
     if action == 'ping':
       await ws.send_json({'action': 'pong'})
     elif action == 'get_state':
-      await ws.send_json(render_state.to_dict())
+      state = render_state.to_dict()
+      state['brightness'] = brightness_engine.get_status()
+      await ws.send_json(state)
 
   async def broadcast_state():
     data = render_state.to_dict()
+    data['brightness'] = brightness_engine.get_status()
     dead = set()
     for ws in ws_clients:
       try:
@@ -306,16 +358,18 @@ def create_app(
         dead.add(ws)
     ws_clients -= dead
 
-  # Background broadcast task
   @app.on_event("startup")
   async def start_broadcast():
     async def periodic_broadcast():
       while True:
-        await broadcast_state()
-        await asyncio.sleep(0.5)
+        try:
+          await broadcast_state()
+          await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+          break
     asyncio.create_task(periodic_broadcast())
 
-  # --- Static files (UI) ---
+  # --- Static files ---
 
   @app.get("/")
   async def root():
