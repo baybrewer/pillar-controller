@@ -132,10 +132,13 @@ def verify_packet(data: bytes) -> Optional[tuple[PacketHeader, bytes]]:
 
 def cobs_encode(data: bytes) -> bytes:
   """COBS encode data. Output will not contain 0x00."""
+  if len(data) == 0:
+    return b'\x01'
+
   output = bytearray()
   idx = 0
-  while idx < len(data):
-    # Find next zero byte
+  while idx <= len(data):
+    # Find next zero byte or end
     block_start = idx
     while idx < len(data) and data[idx] != 0 and (idx - block_start) < 254:
       idx += 1
@@ -146,11 +149,16 @@ def cobs_encode(data: bytes) -> bytes:
 
     if idx < len(data) and data[idx] == 0:
       idx += 1
+    else:
+      break
   return bytes(output)
 
 
 def cobs_decode(data: bytes) -> Optional[bytes]:
   """COBS decode data. Returns None on error."""
+  if len(data) == 0:
+    return b''
+
   output = bytearray()
   idx = 0
   try:
@@ -164,11 +172,9 @@ def cobs_decode(data: bytes) -> Optional[bytes]:
           return None
         output.append(data[idx])
         idx += 1
+      # Add implicit zero between blocks (not after the last block)
       if code < 255 and idx < len(data):
         output.append(0)
-    # Remove trailing zero if present
-    if output and output[-1] == 0:
-      output = output[:-1]
     return bytes(output)
   except (IndexError, ValueError):
     return None
