@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="800" viewBox="0 0 1400 800">
+<style>text{font-family:Arial,Helvetica,sans-serif} .title{font-size:32px;font-weight:700} .h{font-size:24px;font-weight:700} .body{font-size:18px} .box{fill:#f7faff;stroke:#304050;stroke-width:3;rx:16} .smallbox{fill:#fff;stroke:#547;stroke-width:2;rx:10} .arrow{stroke:#1f4e79;stroke-width:6;fill:none;marker-end:url(#arrow)}</style>
+<defs>
+<marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+  <path d="M0,0 L12,6 L0,12 z" fill="#1f4e79"/>
+</marker>
+</defs>
+<text x="700.0" y="50" text-anchor="middle" class="title">System Architecture</text>
+<rect x="60" y="260" width="220" height="180" class="box"/>
+<text x="170.0" y="298" text-anchor="middle" class="h">iPhone / browser</text>
+<text x="80" y="338" class="body">• Connect to local Wi-Fi</text>
+<text x="80" y="370" class="body">• Use phone UI</text>
+<text x="80" y="402" class="body">• No monitor required</text>
+<rect x="380" y="120" width="420" height="440" class="box"/>
+<text x="590.0" y="158" text-anchor="middle" class="h">Raspberry Pi</text>
+<text x="400" y="198" class="body">• Hotspot / AP</text>
+<text x="400" y="230" class="body">• Web UI + API</text>
+<text x="400" y="262" class="body">• Effects + media + audio</text>
+<text x="400" y="294" class="body">• Mapping 10x172 → 5x344</text>
+<text x="400" y="326" class="body">• USB frame transport</text>
+<rect x="920" y="180" width="300" height="260" class="box"/>
+<text x="1070.0" y="218" text-anchor="middle" class="h">Teensy 4.1 + Octo</text>
+<text x="940" y="258" class="body">• USB Serial RX</text>
+<text x="940" y="290" class="body">• Frame validation</text>
+<text x="940" y="322" class="body">• OctoWS2811 DMA</text>
+<text x="940" y="354" class="body">• 5 active outputs</text>
+<rect x="1260" y="210" width="110" height="210" class="box"/>
+<text x="1315.0" y="248" text-anchor="middle" class="h">LEDs</text>
+<text x="1280" y="288" class="body">• 10 strips</text>
+<text x="1280" y="320" class="body">• 5 paired channels</text>
+<rect x="900" y="520" width="470" height="170" class="smallbox"/>
+<text x="1135" y="555" text-anchor="middle" class="h">Power domain</text>
+<text x="920" y="595" class="body">• LED strips have their own 5V supplies</text>
+<text x="920" y="623" class="body">• Ground must be common with controller ground</text>
+<text x="920" y="651" class="body">• Do not tie +5V rails from different supplies together</text>
+<text x="920" y="679" class="body">• Avoid USB back-feed into the Pi</text>
+<path d="M280,350 C320,350 330,350 380,350" class="arrow"/>
+<path d="M800,340 C845,340 865,315 920,315" class="arrow"/>
+<path d="M1220,315 C1235,315 1245,315 1260,315" class="arrow"/>
+<text x="330" y="330" text-anchor="middle" class="body">Wi-Fi</text>
+<text x="860" y="290" text-anchor="middle" class="body">USB Serial</text>
+<text x="1240" y="290" text-anchor="middle" class="body">5 active WS2812 outputs</text>
+<text x="590" y="600" text-anchor="middle" class="body">Pi owns UX, scenes, effects, media, audio, mapping, and frame pacing.</text>
+<text x="1070" y="470" text-anchor="middle" class="body">Teensy owns packet ingestion and deterministic DMA-driven strip output.</text>
+</svg>
