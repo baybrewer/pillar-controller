@@ -1,0 +1,111 @@
+# Effect definitions and defaults
+
+palettes:
+  rainbow:
+    colors: ["#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#4B0082", "#9400D3"]
+  fire:
+    colors: ["#000000", "#330000", "#660000", "#CC3300", "#FF6600", "#FFCC00", "#FFFFFF"]
+  ocean:
+    colors: ["#000033", "#000066", "#003399", "#0066CC", "#0099FF", "#66CCFF", "#CCFFFF"]
+  forest:
+    colors: ["#001100", "#003300", "#006600", "#009900", "#00CC00", "#33FF33", "#99FF99"]
+  lava:
+    colors: ["#1A0000", "#4D0000", "#800000", "#CC0000", "#FF3300", "#FF9900", "#FFFF00"]
+  ice:
+    colors: ["#000033", "#000066", "#3333CC", "#6666FF", "#99CCFF", "#CCECFF", "#FFFFFF"]
+  sunset:
+    colors: ["#1A0033", "#4D0066", "#990066", "#CC3366", "#FF6633", "#FF9933", "#FFCC66"]
+
+effects:
+  solid_color:
+    params:
+      color: "#FF6600"
+
+  vertical_gradient:
+    params:
+      palette: "rainbow"
+      speed: 0.5
+
+  rainbow_rotate:
+    params:
+      speed: 1.0
+      scale: 1.0
+
+  plasma:
+    params:
+      speed: 1.0
+      scale: 2.0
+      complexity: 3
+
+  twinkle:
+    params:
+      density: 0.05
+      speed: 1.0
+      palette: "ice"
+
+  spark:
+    params:
+      rate: 10
+      speed: 2.0
+      palette: "fire"
+
+  noise_wash:
+    params:
+      speed: 0.5
+      scale: 3.0
+      palette: "ocean"
+
+  color_wipe:
+    params:
+      color: "#0099FF"
+      speed: 1.0
+
+  scanline:
+    params:
+      width: 3
+      speed: 2.0
+      color: "#FFFFFF"
+
+  fire:
+    params:
+      cooling: 55
+      sparking: 120
+      palette: "fire"
+
+  sine_bands:
+    params:
+      frequency: 3.0
+      speed: 1.0
+      palette: "rainbow"
+
+  cylinder_rotate:
+    params:
+      speed: 1.0
+      palette: "sunset"
+
+audio_effects:
+  vu_pulse:
+    params:
+      sensitivity: 1.0
+      palette: "lava"
+
+  band_colors:
+    params:
+      low_color: "#FF0000"
+      mid_color: "#00FF00"
+      high_color: "#0000FF"
+
+  beat_flash:
+    params:
+      decay: 0.9
+      color: "#FFFFFF"
+
+  energy_ring:
+    params:
+      speed: 2.0
+      palette: "fire"
+
+  spectral_glow:
+    params:
+      smoothing: 0.8
+      palette: "rainbow"
