@@ -1,0 +1,26 @@
+[Unit]
+Description=Pillar LED Controller
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pillar
+Group=pillar
+WorkingDirectory=/opt/pillar/app
+ExecStart=/opt/pillar/venv/bin/python -m app.main
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+
+# Allow access to USB serial devices
+SupplementaryGroups=dialout
+
+# Resource limits
+LimitNOFILE=4096
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
