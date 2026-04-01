@@ -168,6 +168,7 @@ def create_app(
 
   @app.post("/api/brightness/config", dependencies=[Depends(require_auth)])
   async def update_brightness(req: BrightnessConfigRequest):
+    from datetime import datetime, timezone
     update = {}
     if req.manual_cap is not None:
       update['manual_cap'] = req.manual_cap
@@ -181,6 +182,8 @@ def create_app(
       update['solar'] = req.solar
     if update:
       brightness_engine.update_config(update)
+    effective = brightness_engine.get_effective_brightness(datetime.now(timezone.utc))
+    await transport.send_brightness(effective)
     await broadcast_state()
     return brightness_engine.get_status()
 
