@@ -190,9 +190,12 @@ def create_app(
   @app.post("/api/display/brightness", dependencies=[Depends(require_auth)])
   async def set_brightness(req: BrightnessConfigRequest):
     """Legacy endpoint — sets manual cap."""
+    from datetime import datetime, timezone
     if req.manual_cap is not None:
       brightness_engine.manual_cap = req.manual_cap
       state_manager.brightness_manual_cap = req.manual_cap
+    effective = brightness_engine.get_effective_brightness(datetime.now(timezone.utc))
+    await transport.send_brightness(effective)
     await broadcast_state()
     return brightness_engine.get_status()
 
