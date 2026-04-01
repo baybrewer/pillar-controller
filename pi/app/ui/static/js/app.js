@@ -277,6 +277,10 @@ function initDiagnostics() {
       api('POST', '/api/diagnostics/test-pattern', { pattern: btn.dataset.test });
     });
   });
+
+  document.getElementById('diag-clear-btn').addEventListener('click', () => {
+    api('POST', '/api/diagnostics/clear');
+  });
 }
 
 async function loadStats() {
