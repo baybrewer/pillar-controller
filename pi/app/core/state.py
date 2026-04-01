@@ -82,8 +82,8 @@ class StateManager:
   # --- Properties with debounced save ---
 
   @property
-  def current_scene(self) -> str:
-    return self._state.get('current_scene', 'rainbow_rotate')
+  def current_scene(self) -> Optional[str]:
+    return self._state.get('current_scene')
 
   @current_scene.setter
   def current_scene(self, value: str):
