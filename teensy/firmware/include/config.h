@@ -41,6 +41,7 @@
 #define TEST_HEARTBEAT         7
 #define TEST_STRIP_IDENTIFY    8
 #define TEST_SEAM_MARKER       9
+#define TEST_PATTERN_NONE      0xFF
 
 // --- Timing ---
 #define WATCHDOG_TIMEOUT_MS    500
