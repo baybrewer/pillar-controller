@@ -61,8 +61,9 @@ size_t cobs_encode(const uint8_t* input, size_t len, uint8_t* output, size_t max
   size_t out_idx = 0;
   size_t read_idx = 0;
 
-  while (read_idx < len) {
+  while (read_idx <= len) {
     size_t block_start = read_idx;
+    // Scan for next zero or end of input
     while (read_idx < len && input[read_idx] != 0 && (read_idx - block_start) < 254) {
       read_idx++;
     }
@@ -78,6 +79,8 @@ size_t cobs_encode(const uint8_t* input, size_t len, uint8_t* output, size_t max
 
     if (read_idx < len && input[read_idx] == 0) {
       read_idx++;
+    } else {
+      break;
     }
   }
   return out_idx;
