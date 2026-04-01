@@ -212,7 +212,8 @@ void handleFrame(const uint8_t* payload, size_t len) {
     return;
   }
 
-  // Copy pixel data to pending frame
+  // Zero out then copy pixel data to pending frame
+  memset(pendingFrame, 0, sizeof(pendingFrame));
   memcpy(pendingFrame, payload + 3, expectedPixels);
 
   if (pendingFrameReady) {
