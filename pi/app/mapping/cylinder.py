@@ -116,8 +116,8 @@ def serialize_channels(channel_data: np.ndarray) -> bytes:
   """
   Serialize channel data to bytes for USB transport.
 
-  channel_data: shape (5, 344, 3) uint8
-  Returns: channel-major RGB bytes, 5 * 344 * 3 = 5160 bytes
+  channel_data: shape (CHANNELS, LEDS_PER_CHANNEL, 3) uint8
+  Returns: channel-major RGB bytes, CHANNELS * LEDS_PER_CHANNEL * 3 bytes
   """
   return channel_data.tobytes()
 
