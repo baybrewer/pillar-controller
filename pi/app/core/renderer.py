@@ -116,14 +116,43 @@ class Renderer:
       return False
 
     effect_cls = self.effect_registry[scene_name]
+
+    # Merge: code defaults < yaml config < caller params
+    yaml_params = {}
+    if hasattr(self, 'effects_config') and self.effects_config:
+      for section in ('effects', 'audio_effects'):
+        section_data = self.effects_config.get(section, {})
+        if scene_name in section_data:
+          yaml_params = section_data[scene_name].get('params', {})
+          break
+    merged = {**yaml_params, **(params or {})}
+
     self.current_effect = effect_cls(
       width=self.internal_width,
       height=N,
-      params=params or {},
+      params=merged,
     )
     self.state.current_scene = scene_name
     logger.info(f"Scene set: {scene_name}")
     return True
+
+  def activate_scene(self, scene_name: str, params: Optional[dict] = None,
+                     media_manager=None) -> bool:
+    """Unified scene activation for all types (generative, audio, media)."""
+    if scene_name.startswith('media:'):
+      item_id = scene_name[6:]
+      if media_manager and item_id in media_manager.items:
+        from ..effects.media_playback import MediaPlayback
+        self.current_effect = MediaPlayback(
+          width=self.internal_width,
+          height=N,
+          params={'item_id': item_id, **(params or {})},
+          media_manager=media_manager,
+        )
+        self.state.current_scene = scene_name
+        return True
+      return False
+    return self.set_scene(scene_name, params)
 
   async def run(self):
     """Main render loop."""
