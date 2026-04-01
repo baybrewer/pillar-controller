@@ -22,47 +22,39 @@ public:
 
   void reset() {
     _out_len = 0;
-    _code = 0;
-    _block_remaining = 0;
+    _remaining = 0;
+    _last_code = 0;
+    _had_block = false;
     _started = false;
-    _pending_zero = false;
   }
 
   // Feed one byte. Returns true when a complete packet delimiter (0x00) is found.
   bool feed(uint8_t byte) {
     if (byte == 0x00) {
-      // End of packet
-      if (_started && _out_len > 0) {
-        // Remove trailing zero added by block transitions (if any)
-        if (_out_len > 0 && _pending_zero) {
-          _out_len--;  // strip the last implicit zero
-        }
-        return true;
-      }
-      reset();
-      return false;
+      // Delimiter — packet complete
+      bool valid = _started && _out_len > 0;
+      return valid;
     }
 
     _started = true;
 
-    if (_block_remaining == 0) {
-      // This byte is a COBS code
-      _code = byte;
-      _block_remaining = _code - 1;
-      _pending_zero = (_code < 255);
-    } else {
-      // This byte is data
-      if (_out_len < sizeof(_output)) {
-        _output[_out_len++] = byte;
-      }
-      _block_remaining--;
-
-      if (_block_remaining == 0 && _pending_zero) {
-        // Insert implicit zero between blocks
+    if (_remaining == 0) {
+      // This is a code byte
+      // If we had a previous block that was < 255, insert implicit zero
+      if (_had_block && _last_code < 255) {
         if (_out_len < sizeof(_output)) {
           _output[_out_len++] = 0x00;
         }
       }
+      _last_code = byte;
+      _remaining = byte - 1;
+      _had_block = true;
+    } else {
+      // Data byte
+      if (_out_len < sizeof(_output)) {
+        _output[_out_len++] = byte;
+      }
+      _remaining--;
     }
     return false;
   }
@@ -72,11 +64,11 @@ public:
 
 private:
   uint8_t _output[HEADER_SIZE + MAX_PAYLOAD_SIZE + CRC_SIZE + 64];
-  size_t  _out_len;
-  uint8_t _code;
-  uint8_t _block_remaining;
-  bool    _started;
-  bool    _pending_zero;
+  size_t _out_len;
+  uint8_t _remaining;
+  uint8_t _last_code;
+  bool _had_block;
+  bool _started;
 };
 
 // --- COBS encoder ---
