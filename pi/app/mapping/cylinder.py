@@ -74,11 +74,11 @@ def map_frame(logical_frame: np.ndarray) -> np.ndarray:
 
   Uses precomputed lookup for speed.
   """
-  assert logical_frame.shape == (10, N, 3), f"Expected (10, {N}, 3), got {logical_frame.shape}"
+  assert logical_frame.shape == (STRIPS, N, 3), f"Expected ({STRIPS}, {N}, 3), got {logical_frame.shape}"
 
-  channel_data = np.zeros((5, 2 * N, 3), dtype=np.uint8)
+  channel_data = np.zeros((CHANNELS, LEDS_PER_CHANNEL, 3), dtype=np.uint8)
 
-  for x in range(10):
+  for x in range(STRIPS):
     for y in range(N):
       ch = _channels[x, y]
       idx = _indices[x, y]
@@ -91,15 +91,15 @@ def map_frame_fast(logical_frame: np.ndarray) -> np.ndarray:
   """
   Vectorized frame mapping using precomputed flat indices.
 
-  logical_frame: shape (10, 172, 3) uint8
-  Returns: shape (5, 344, 3) uint8
+  logical_frame: shape (STRIPS, LEDS_PER_STRIP, 3) uint8
+  Returns: shape (CHANNELS, LEDS_PER_CHANNEL, 3) uint8
   """
-  assert logical_frame.shape == (10, N, 3), f"Expected (10, {N}, 3), got {logical_frame.shape}"
+  assert logical_frame.shape == (STRIPS, N, 3), f"Expected ({STRIPS}, {N}, 3), got {logical_frame.shape}"
 
-  channel_data = np.zeros((5, 2 * N, 3), dtype=np.uint8)
+  channel_data = np.zeros((CHANNELS, LEDS_PER_CHANNEL, 3), dtype=np.uint8)
 
   # Process each channel pair
-  for pair_idx in range(5):
+  for pair_idx in range(CHANNELS):
     even_strip = pair_idx * 2
     odd_strip = pair_idx * 2 + 1
 
