@@ -118,6 +118,8 @@ class TeensyTransport:
     return False
 
   def _read_packet(self) -> Optional[tuple]:
+    # No lock needed: called only from the same async context (request_stats,
+    # _handshake) which already holds or doesn't contend with the write lock.
     if not self.serial or not self.serial.is_open:
       return None
 
