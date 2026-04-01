@@ -22,7 +22,6 @@ MEDIA_DIR = Path("/opt/pillar/media")
 CACHE_DIR = Path("/opt/pillar/cache")
 VIRTUAL_WIDTH = 40
 HEIGHT = 172
-MAX_UPLOAD_MB = 50
 
 
 class MediaItem:
