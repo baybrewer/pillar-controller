@@ -21,7 +21,6 @@ static COBSDecoder decoder;
 static uint8_t pendingFrame[ACTIVE_OUTPUTS * LEDS_PER_STRIP * 3];
 static bool pendingFrameReady = false;
 static uint8_t masterBrightness = 255;
-static uint8_t colorOrder = DEFAULT_COLOR_ORDER;
 static bool blackout = false;
 static int activeTestPattern = -1;  // -1 = none
 
