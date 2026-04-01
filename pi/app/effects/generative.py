@@ -287,13 +287,37 @@ class SineBands(Effect):
     elapsed = self.elapsed(t)
     freq = self.params.get('frequency', 3.0)
     speed = self.params.get('speed', 1.0)
-    frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
 
-    for y in range(self.height):
-      v = (math.sin(y / self.height * freq * math.pi * 2 + elapsed * speed) + 1.0) / 2.0
-      hue = v
-      r, g, b = hsv_to_rgb(hue, 1.0, v)
-      frame[:, y] = (r, g, b)
+    ys = np.arange(self.height, dtype=np.float64)
+    v = (np.sin(ys / self.height * freq * math.pi * 2 + elapsed * speed) + 1.0) / 2.0
+
+    # v is both hue and value; need shape (width, height) for the helper
+    # SineBands is uniform across x, so broadcast after computing 1D
+    hue_1d = v  # shape: (height,)
+
+    # Use _hsv_array_to_rgb on a 2D array to get (width, height, 3)
+    hue_2d = np.broadcast_to(hue_1d[np.newaxis, :], (self.width, self.height)).copy()
+
+    # For SineBands, s=1.0 and v varies per row — need per-pixel v
+    # _hsv_array_to_rgb takes scalar v, so we do this manually
+    h = hue_2d % 1.0
+    i = (h * 6.0).astype(int) % 6
+    f = h * 6.0 - (h * 6.0).astype(int)
+    val = np.broadcast_to(v[np.newaxis, :], (self.width, self.height))
+
+    s = 1.0
+    p = val * (1.0 - s)
+    q = val * (1.0 - s * f)
+    t_val = val * (1.0 - s * (1.0 - f))
+
+    rc = np.where(i == 0, val, np.where(i == 1, q, np.where(i == 2, p, np.where(i == 3, p, np.where(i == 4, t_val, val)))))
+    gc = np.where(i == 0, t_val, np.where(i == 1, val, np.where(i == 2, val, np.where(i == 3, q, np.where(i == 4, p, p)))))
+    bc = np.where(i == 0, p, np.where(i == 1, p, np.where(i == 2, t_val, np.where(i == 3, val, np.where(i == 4, val, q)))))
+
+    frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
+    frame[..., 0] = (rc * 255).astype(np.uint8)
+    frame[..., 1] = (gc * 255).astype(np.uint8)
+    frame[..., 2] = (bc * 255).astype(np.uint8)
     return frame
 
 
