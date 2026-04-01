@@ -164,15 +164,16 @@ class TeensyTransport:
     )
     framed = frame_packet(packet)
 
-    try:
-      self.serial.write(framed)
-      self.frames_sent += 1
-      return True
-    except (serial.SerialException, OSError) as e:
-      self.send_errors += 1
-      logger.error(f"Frame send failed: {e}")
-      self.connected = False
-      return False
+    async with self._lock:
+      try:
+        await asyncio.to_thread(self.serial.write, framed)
+        self.frames_sent += 1
+        return True
+      except (serial.SerialException, OSError) as e:
+        self.send_errors += 1
+        logger.error(f"Frame send failed: {e}")
+        self.connected = False
+        return False
 
   async def send_command(self, packet_type: int, payload: bytes = b'') -> bool:
     if not self.connected or not self.serial:
