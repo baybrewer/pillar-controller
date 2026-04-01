@@ -49,8 +49,8 @@ def build_lookup_table() -> np.ndarray:
 
   Returns array of shape (10, 172, 2) where [x, y] = (channel, index).
   """
-  lut = np.zeros((10, N, 2), dtype=np.int32)
-  for x in range(10):
+  lut = np.zeros((STRIPS, N, 2), dtype=np.int32)
+  for x in range(STRIPS):
     for y in range(N):
       ch, idx = logical_to_channel(x, y)
       lut[x, y, 0] = ch
