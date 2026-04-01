@@ -92,7 +92,7 @@ def create_app(
   @app.get("/api/system/status")
   async def system_status():
     return {
-      'transport': {'connected': transport.connected, 'port': transport.serial.port if transport.serial else None},
+      'transport': transport.get_status(),
       'render': render_state.to_dict(),
       'brightness': brightness_engine.get_status(),
       'scenes_count': len(state_manager.list_scenes()),
