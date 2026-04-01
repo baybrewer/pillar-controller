@@ -79,26 +79,33 @@ sudo chmod 0440 /etc/sudoers.d/pillar
 echo ""
 echo "=== Wi-Fi hotspot setup ==="
 if [ -f /opt/pillar/config/system.yaml ]; then
-  SSID=$(python3 -c "import yaml; print(yaml.safe_load(open('/opt/pillar/config/system.yaml'))['network']['ssid'])" 2>/dev/null || echo "Pillar-Control")
-  PASS=$(python3 -c "import yaml; print(yaml.safe_load(open('/opt/pillar/config/system.yaml'))['network']['password'])" 2>/dev/null || echo "")
-  IP=$(python3 -c "import yaml; print(yaml.safe_load(open('/opt/pillar/config/system.yaml'))['network']['ip'])" 2>/dev/null || echo "192.168.4.1")
+  SSID=$(/opt/pillar/venv/bin/python3 -c "import yaml; print(yaml.safe_load(open('/opt/pillar/config/system.yaml'))['network']['ssid'])" 2>/dev/null || echo "Pillar-Control")
+  PASS=$(/opt/pillar/venv/bin/python3 -c "import yaml; print(yaml.safe_load(open('/opt/pillar/config/system.yaml'))['network']['password'])" 2>/dev/null || echo "")
+  IP=$(/opt/pillar/venv/bin/python3 -c "import yaml; print(yaml.safe_load(open('/opt/pillar/config/system.yaml'))['network']['ip'])" 2>/dev/null || echo "192.168.4.1")
+  HOSTNAME=$(/opt/pillar/venv/bin/python3 -c "import yaml; print(yaml.safe_load(open('/opt/pillar/config/system.yaml'))['network']['hostname'])" 2>/dev/null || echo "pillar")
 
   if [ "$PASS" != "" ] && [ "$PASS" != "CHANGE_ME" ]; then
     echo "Creating Wi-Fi hotspot: SSID=${SSID}"
     sudo nmcli connection delete Hotspot 2>/dev/null || true
-    sudo nmcli dev wifi hotspot ifname wlan0 ssid "$SSID" password "$PASS" || true
-    sudo nmcli connection modify Hotspot autoconnect yes || true
-    sudo nmcli connection modify Hotspot ipv4.addresses "${IP}/24" || true
-    echo "Hotspot configured."
+    if sudo nmcli dev wifi hotspot ifname wlan0 ssid "$SSID" password "$PASS"; then
+      sudo nmcli connection modify Hotspot autoconnect yes
+      sudo nmcli connection modify Hotspot ipv4.addresses "${IP}/24"
+      echo "Hotspot configured successfully."
+    else
+      echo "ERROR: Failed to create hotspot. Check wlan0 availability."
+      echo "You can retry manually:"
+      echo "  sudo nmcli dev wifi hotspot ifname wlan0 ssid '$SSID' password '$PASS'"
+    fi
   else
     echo "WARNING: network.password not set in system.yaml — skipping hotspot setup"
   fi
+
+  # Set hostname from config
+  sudo hostnamectl set-hostname "$HOSTNAME"
 else
   echo "WARNING: /opt/pillar/config/system.yaml not found — skipping hotspot setup"
+  sudo hostnamectl set-hostname pillar
 fi
-
-# Set hostname
-sudo hostnamectl set-hostname pillar
 
 echo ""
 echo "=== Setup complete ==="
