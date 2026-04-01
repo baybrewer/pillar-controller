@@ -301,6 +301,11 @@ def create_app(
 
     raise HTTPException(404, f"Unknown test pattern: {req.pattern}")
 
+  @app.post("/api/diagnostics/clear", dependencies=[Depends(require_auth)])
+  async def clear_test_pattern():
+    await transport.send_test_pattern(0xFF)
+    return {"status": "ok"}
+
   @app.get("/api/diagnostics/stats")
   async def get_stats():
     teensy_stats = await transport.request_stats()
