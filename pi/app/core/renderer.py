@@ -134,6 +134,17 @@ class Renderer:
       frame_start = time.monotonic()
       target_interval = 1.0 / self.state.target_fps
 
+      # Measure FPS from wall-clock interval between frame starts
+      if self._last_frame_start > 0:
+        frame_interval = frame_start - self._last_frame_start
+        self._fps_samples.append(frame_interval)
+        if len(self._fps_samples) > self._fps_window:
+          self._fps_samples.pop(0)
+        if self._fps_samples:
+          avg_interval = sum(self._fps_samples) / len(self._fps_samples)
+          self.state.actual_fps = 1.0 / avg_interval if avg_interval > 0 else 0
+      self._last_frame_start = frame_start
+
       try:
         await self._render_frame()
       except asyncio.CancelledError:
@@ -142,17 +153,12 @@ class Renderer:
         logger.error(f"Render error: {e}", exc_info=True)
         self.state.frames_dropped += 1
 
-      elapsed = time.monotonic() - frame_start
-      self.state.last_frame_time_ms = elapsed * 1000
+      # Track render+send cost (before sleep)
+      render_elapsed = time.monotonic() - frame_start
+      self.state.render_cost_ms = render_elapsed * 1000
+      self.state.last_frame_time_ms = render_elapsed * 1000
 
-      self._fps_samples.append(elapsed)
-      if len(self._fps_samples) > self._fps_window:
-        self._fps_samples.pop(0)
-      if self._fps_samples:
-        avg = sum(self._fps_samples) / len(self._fps_samples)
-        self.state.actual_fps = 1.0 / avg if avg > 0 else 0
-
-      remaining = target_interval - elapsed
+      remaining = target_interval - render_elapsed
       if remaining > 0:
         await asyncio.sleep(remaining)
       else:
