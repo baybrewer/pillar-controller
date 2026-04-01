@@ -269,8 +269,10 @@ def create_app(
 
   @app.post("/api/audio/config", dependencies=[Depends(require_auth)])
   async def configure_audio(req: AudioConfigRequest):
-    audio_analyzer.sensitivity = req.sensitivity
-    audio_analyzer.gain = req.gain
+    if req.sensitivity is not None:
+      audio_analyzer.sensitivity = req.sensitivity
+    if req.gain is not None:
+      audio_analyzer.gain = req.gain
     if req.device_index is not None:
       audio_analyzer.set_device(req.device_index)
     return {"status": "ok"}
