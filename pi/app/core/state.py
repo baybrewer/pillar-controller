@@ -100,8 +100,8 @@ class StateManager:
     self.mark_dirty()
 
   @property
-  def brightness_manual_cap(self) -> float:
-    return self._state.get('brightness_manual_cap', 0.8)
+  def brightness_manual_cap(self) -> Optional[float]:
+    return self._state.get('brightness_manual_cap')
 
   @brightness_manual_cap.setter
   def brightness_manual_cap(self, value: float):
