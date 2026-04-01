@@ -271,3 +271,105 @@ class TestHardwareConstants:
     assert lps == LEDS_PER_CHANNEL, f"config.h LEDS_PER_STRIP={lps} != hardware.yaml LEDS_PER_CHANNEL={LEDS_PER_CHANNEL}"
     assert active == CHANNELS, f"config.h ACTIVE_OUTPUTS={active} != hardware.yaml CHANNELS={CHANNELS}"
     assert physical == LEDS_PER_STRIP, f"config.h LEDS_PER_PHYSICAL={physical} != hardware.yaml LEDS_PER_STRIP={LEDS_PER_STRIP}"
+
+
+class TestCOBSLongRuns:
+  """Test COBS with long non-zero runs (>254 bytes)."""
+
+  def test_254_non_zero_bytes(self):
+    data = b'\xFF' * 254
+    encoded = cobs_encode(data)
+    assert b'\x00' not in encoded
+    # Should be 0xFF code + 254 data bytes = 255 bytes
+    assert len(encoded) == 255
+    assert encoded[0] == 0xFF
+    decoded = cobs_decode(encoded)
+    assert decoded == data
+
+  def test_255_non_zero_bytes(self):
+    data = b'\xFF' * 255
+    encoded = cobs_encode(data)
+    assert b'\x00' not in encoded
+    decoded = cobs_decode(encoded)
+    assert decoded == data
+
+  def test_300_non_zero_bytes(self):
+    data = b'\xFF' * 300
+    encoded = cobs_encode(data)
+    assert b'\x00' not in encoded
+    decoded = cobs_decode(encoded)
+    assert decoded == data
+    assert len(decoded) == 300
+
+  def test_1000_non_zero_bytes(self):
+    data = b'\xFF' * 1000
+    encoded = cobs_encode(data)
+    assert b'\x00' not in encoded
+    decoded = cobs_decode(encoded)
+    assert decoded == data
+    assert len(decoded) == 1000
+
+  def test_full_frame_packet(self):
+    """Full 5x344 frame of bright pixels must survive COBS round-trip."""
+    pixels = b'\xFF' * (5 * 344 * 3)
+    pkt = build_packet(PacketType.FRAME, struct.pack('<BH', 5, 344) + pixels)
+    framed = frame_packet(pkt)
+    encoded = framed[:-1]  # remove delimiter
+    decoded = cobs_decode(encoded)
+    assert decoded is not None
+    assert len(decoded) == len(pkt)
+    result = verify_packet(decoded)
+    assert result is not None
+    header, payload = result
+    assert header.packet_type == PacketType.FRAME
+
+  def test_mixed_zeros_and_long_runs(self):
+    """Data with zeros interspersed in long non-zero regions."""
+    data = b'\xFF' * 300 + b'\x00' + b'\xAA' * 200 + b'\x00' + b'\x55' * 100
+    encoded = cobs_encode(data)
+    assert b'\x00' not in encoded
+    decoded = cobs_decode(encoded)
+    assert decoded == data
+
+  def test_random_payloads(self):
+    """Random payloads of various sizes round-trip correctly."""
+    import random
+    rng = random.Random(42)
+    for size in [1, 10, 100, 253, 254, 255, 256, 500, 1000, 5000]:
+      data = bytes(rng.randint(0, 255) for _ in range(size))
+      encoded = cobs_encode(data)
+      assert b'\x00' not in encoded, f"Zero in encoded for size {size}"
+      decoded = cobs_decode(encoded)
+      assert decoded == data, f"Round-trip failed for size {size}"
+
+
+class TestCRC32CrossLanguage:
+  """Verify Python CRC matches what Teensy should compute."""
+
+  def test_ping_packet_crc(self):
+    """PING packet CRC must be deterministic and known."""
+    pkt = build_packet(PacketType.PING)
+    # Extract stored CRC
+    stored_crc = struct.unpack('<I', pkt[-4:])[0]
+    # Verify it matches zlib
+    computed = zlib.crc32(pkt[:-4]) & 0xFFFFFFFF
+    assert stored_crc == computed
+
+  def test_hello_packet_crc(self):
+    pkt = build_packet(PacketType.HELLO, build_hello_payload())
+    stored_crc = struct.unpack('<I', pkt[-4:])[0]
+    computed = zlib.crc32(pkt[:-4]) & 0xFFFFFFFF
+    assert stored_crc == computed
+
+  def test_frame_packet_crc(self):
+    pixels = b'\x80' * (5 * 344 * 3)
+    pkt = build_packet(PacketType.FRAME, struct.pack('<BH', 5, 344) + pixels)
+    stored_crc = struct.unpack('<I', pkt[-4:])[0]
+    computed = zlib.crc32(pkt[:-4]) & 0xFFFFFFFF
+    assert stored_crc == computed
+
+  def test_blackout_packet_crc(self):
+    pkt = build_packet(PacketType.BLACKOUT, build_blackout_payload(True))
+    stored_crc = struct.unpack('<I', pkt[-4:])[0]
+    computed = zlib.crc32(pkt[:-4]) & 0xFFFFFFFF
+    assert stored_crc == computed
