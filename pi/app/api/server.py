@@ -23,7 +23,6 @@ from ..media.manager import MediaManager
 from ..audio.analyzer import AudioAnalyzer
 from ..effects.generative import EFFECTS
 from ..effects.audio_reactive import AUDIO_EFFECTS
-from ..effects.media_playback import MediaPlayback
 from ..diagnostics.tests import DIAGNOSTIC_EFFECTS
 from ..models.protocol import TestPattern
 from .auth import create_auth_dependency
