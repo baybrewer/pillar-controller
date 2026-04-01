@@ -144,19 +144,28 @@ def cobs_encode(data: bytes) -> bytes:
 
   output = bytearray()
   idx = 0
-  while idx <= len(data):
+
+  while idx < len(data):
+    # Find next zero byte or end of data, capped at 254 bytes
     block_start = idx
     while idx < len(data) and data[idx] != 0 and (idx - block_start) < 254:
       idx += 1
 
     block_len = idx - block_start
-    output.append(block_len + 1)
-    output.extend(data[block_start:block_start + block_len])
 
-    if idx < len(data) and data[idx] == 0:
-      idx += 1
+    if block_len == 254 and (idx >= len(data) or data[idx] != 0):
+      # Non-zero run hit 254 limit without a zero — emit 0xFF continuation
+      output.append(0xFF)
+      output.extend(data[block_start:block_start + block_len])
+      # Do NOT consume a zero byte — continue scanning
     else:
-      break
+      # Normal block: ended by zero byte or end of data
+      output.append(block_len + 1)
+      output.extend(data[block_start:block_start + block_len])
+      # Consume the zero byte if present
+      if idx < len(data) and data[idx] == 0:
+        idx += 1
+
   return bytes(output)
 
 
