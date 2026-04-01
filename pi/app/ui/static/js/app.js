@@ -247,6 +247,11 @@ async function loadAudioDevices() {
 }
 
 function initAudio() {
+  document.getElementById('audio-device-select').addEventListener('change', (e) => {
+    const idx = e.target.value ? parseInt(e.target.value) : null;
+    api('POST', '/api/audio/config', { device_index: idx, sensitivity: 1.0, gain: 1.0 });
+  });
+
   document.getElementById('audio-start-btn').addEventListener('click', () => {
     api('POST', '/api/audio/start');
   });
