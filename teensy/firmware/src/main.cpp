@@ -224,10 +224,9 @@ void handleFrame(const uint8_t* payload, size_t len) {
 }
 
 void handleConfig(const uint8_t* payload, size_t len) {
-  // Could update color order, brightness cap, etc.
-  if (len >= 1) {
-    colorOrder = payload[0];
-  }
+  // Color order is compile-time (WS2811_GRB in OctoWS2811 config) — no-op
+  (void)payload;
+  (void)len;
 }
 
 void handleTestPattern(const uint8_t* payload, size_t len) {
