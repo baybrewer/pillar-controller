@@ -221,6 +221,7 @@ void handleFrame(const uint8_t* payload, size_t len) {
   }
   pendingFrameReady = true;
   stats.framesReceived++;
+  activeTestPattern = -1;
 }
 
 void handleConfig(const uint8_t* payload, size_t len) {
