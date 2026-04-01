@@ -66,13 +66,13 @@ class RainbowRotate(Effect):
     elapsed = self.elapsed(t)
     speed = self.params.get('speed', 1.0)
     scale = self.params.get('scale', 1.0)
-    frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
 
-    for x in range(self.width):
-      for y in range(self.height):
-        hue = ((x / self.width * scale) + (y / self.height * 0.3) + elapsed * speed * 0.1) % 1.0
-        r, g, b = hsv_to_rgb(hue, 1.0, 1.0)
-        frame[x, y] = (r, g, b)
+    xs = np.arange(self.width, dtype=np.float64) / self.width * scale
+    ys = np.arange(self.height, dtype=np.float64) / self.height * 0.3
+    xx, yy = np.meshgrid(xs, ys, indexing='ij')
+    hue = (xx + yy + elapsed * speed * 0.1) % 1.0
+
+    frame = _hsv_array_to_rgb(hue, 1.0, 1.0)
     return frame
 
 
