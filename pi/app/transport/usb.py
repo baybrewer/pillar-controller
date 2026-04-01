@@ -182,13 +182,14 @@ class TeensyTransport:
     packet = build_packet(packet_type, payload)
     framed = frame_packet(packet)
 
-    try:
-      self.serial.write(framed)
-      return True
-    except (serial.SerialException, OSError) as e:
-      logger.error(f"Command send failed: {e}")
-      self.connected = False
-      return False
+    async with self._lock:
+      try:
+        self.serial.write(framed)
+        return True
+      except (serial.SerialException, OSError) as e:
+        logger.error(f"Command send failed: {e}")
+        self.connected = False
+        return False
 
   async def send_blackout(self, enabled: bool) -> bool:
     """Send explicit blackout command: True=on, False=off."""
