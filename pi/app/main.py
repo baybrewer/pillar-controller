@@ -73,20 +73,24 @@ def main():
   brightness_conf = sys_conf.get('brightness', {})
   render_conf = sys_conf.get('render', {})
 
-  # State manager
+  # State manager — load persisted values
   state_manager = StateManager(config_dir=config_dir)
   state_manager.load()
 
-  # Brightness engine
+  # Brightness engine — config defaults first, then persisted overrides
   brightness_engine = BrightnessEngine(brightness_conf)
-  brightness_engine.manual_cap = state_manager.brightness_manual_cap
-  if state_manager.brightness_auto_enabled:
+  if state_manager.brightness_manual_cap is not None:
+    brightness_engine.manual_cap = state_manager.brightness_manual_cap
+  if state_manager.brightness_auto_enabled is not None and state_manager.brightness_auto_enabled:
     brightness_engine.update_config({'auto_enabled': True})
 
-  # Render state
+  # Render state — config defaults first, then persisted overrides
   render_state = RenderState()
   render_state.gamma = display_conf.get('gamma', 2.2)
-  render_state.target_fps = state_manager.target_fps
+  if state_manager.target_fps is not None:
+    render_state.target_fps = state_manager.target_fps
+  else:
+    render_state.target_fps = display_conf.get('target_fps', 60)
 
   # Transport
   transport = TeensyTransport(
