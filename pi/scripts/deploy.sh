@@ -24,7 +24,7 @@ rsync -avz --delete \
 
 # Reinstall package and restart
 ssh "${PI_USER}@${PI_HOST}" "\
-  ${PI_PATH}/venv/bin/pip install -e ${SRC_PATH} && \
+  ${PI_PATH}/venv/bin/pip install -e ${SRC_PATH}[audio,video] && \
   sudo systemctl restart pillar"
 
 echo "Deployed and restarted."
