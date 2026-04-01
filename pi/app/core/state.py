@@ -118,8 +118,8 @@ class StateManager:
     self.mark_dirty()
 
   @property
-  def target_fps(self) -> int:
-    return self._state.get('target_fps', 60)
+  def target_fps(self) -> Optional[int]:
+    return self._state.get('target_fps')
 
   @target_fps.setter
   def target_fps(self, value: int):
