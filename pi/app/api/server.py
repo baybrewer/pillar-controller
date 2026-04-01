@@ -297,6 +297,7 @@ def create_app(
 
     if req.pattern in DIAGNOSTIC_EFFECTS:
       renderer.set_scene(req.pattern)
+      state_manager.current_scene = req.pattern
       return {"status": "ok", "target": "pi"}
 
     raise HTTPException(404, f"Unknown test pattern: {req.pattern}")
