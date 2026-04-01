@@ -10,6 +10,30 @@ from .base import Effect, hsv_to_rgb, hex_to_rgb, palette_sample, lerp_color
 from ..mapping.cylinder import N
 
 
+def _hsv_array_to_rgb(h: np.ndarray, s: float, v: float) -> np.ndarray:
+  """Vectorized HSV to RGB. h is an array of hues (0-1), s and v are scalars."""
+  h = h % 1.0
+  shape = h.shape
+  frame = np.zeros((*shape, 3), dtype=np.uint8)
+
+  i = (h * 6.0).astype(int) % 6
+  f = h * 6.0 - (h * 6.0).astype(int)
+
+  p = v * (1.0 - s)
+  q = v * (1.0 - s * f)
+  t_val = v * (1.0 - s * (1.0 - f))
+
+  # Build RGB channels
+  r = np.where(i == 0, v, np.where(i == 1, q, np.where(i == 2, p, np.where(i == 3, p, np.where(i == 4, t_val, v)))))
+  g = np.where(i == 0, t_val, np.where(i == 1, v, np.where(i == 2, v, np.where(i == 3, q, np.where(i == 4, p, p)))))
+  b = np.where(i == 0, p, np.where(i == 1, p, np.where(i == 2, t_val, np.where(i == 3, v, np.where(i == 4, v, q)))))
+
+  frame[..., 0] = (r * 255).astype(np.uint8)
+  frame[..., 1] = (g * 255).astype(np.uint8)
+  frame[..., 2] = (b * 255).astype(np.uint8)
+  return frame
+
+
 class SolidColor(Effect):
   """Solid color fill."""
 
