@@ -18,15 +18,11 @@ Electrical model:
 
 import numpy as np
 from typing import Optional
-import yaml
+
+from ..hardware_constants import LEDS_PER_STRIP, STRIPS, CHANNELS, LEDS_PER_CHANNEL
 
 
-N = 172  # LEDs per physical strip
-
-
-def load_hardware_config(config_path: str) -> dict:
-  with open(config_path) as f:
-    return yaml.safe_load(f)
+N = LEDS_PER_STRIP
 
 
 def logical_to_channel(x: int, y: int) -> tuple[int, int]:
