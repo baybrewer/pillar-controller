@@ -103,6 +103,7 @@ class Renderer:
     self._gamma_lut = _build_gamma_lut(state.gamma)
     self._fps_samples: list[float] = []
     self._fps_window = 60
+    self._last_frame_start: float = 0.0
 
   def register_effect(self, name: str, effect_class):
     self.effect_registry[name] = effect_class
