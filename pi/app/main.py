@@ -101,6 +101,8 @@ def main():
   # Renderer
   internal_width = render_conf.get('internal_width', 40)
   renderer = Renderer(transport, render_state, brightness_engine, internal_width=internal_width)
+  effects_conf = config.get('effects', {})
+  renderer.effects_config = effects_conf
 
   for name, cls in EFFECTS.items():
     renderer.register_effect(name, cls)
