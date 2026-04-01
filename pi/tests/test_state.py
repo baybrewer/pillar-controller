@@ -8,12 +8,16 @@ from app.core.state import StateManager
 
 class TestLoadMissing:
   def test_load_missing_file(self, tmp_path):
-    """No state file on disk -> defaults are used."""
+    """No state file on disk -> structural defaults, display values are None."""
     mgr = StateManager(config_dir=tmp_path)
     mgr.load()
-    assert mgr.current_scene == 'rainbow_rotate'
-    assert mgr.brightness_manual_cap == 0.8
-    assert mgr.target_fps == 60
+    # Display values are None until set from config or API
+    assert mgr.current_scene is None
+    assert mgr.brightness_manual_cap is None
+    assert mgr.target_fps is None
+    # Structural defaults present
+    assert mgr.current_params == {}
+    assert mgr.list_scenes() == {}
 
 
 class TestSaveAndLoad:
