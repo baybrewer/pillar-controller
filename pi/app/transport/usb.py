@@ -216,8 +216,6 @@ class TeensyTransport:
           if parsed:
             return parsed
           return {'error': 'malformed_stats', 'payload_len': len(payload)}
-        if header.packet_type == PacketType.PONG:
-          return {'pong': True}
       await asyncio.sleep(0.005)
     return None
 
