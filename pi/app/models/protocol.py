@@ -53,6 +53,7 @@ class TestPattern(IntEnum):
   HEARTBEAT = 7
   STRIP_IDENTIFY = 8
   SEAM_MARKER = 9
+  CLEAR = 0xFF
 
 
 @dataclass
