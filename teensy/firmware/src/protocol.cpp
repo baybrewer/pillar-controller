@@ -60,6 +60,7 @@ uint32_t crc32(const uint8_t* data, size_t len) {
 size_t cobs_encode(const uint8_t* input, size_t len, uint8_t* output, size_t max_out) {
     size_t out_idx = 0;
     size_t read_idx = 0;
+    bool trailing_zero = false;
 
     while (read_idx < len) {
         size_t block_start = read_idx;
@@ -78,6 +79,7 @@ size_t cobs_encode(const uint8_t* input, size_t len, uint8_t* output, size_t max
                 if (out_idx >= max_out) return 0;
                 output[out_idx++] = input[block_start + i];
             }
+            trailing_zero = false;
             // Do not consume a zero — continue scanning
         } else {
             // Normal block ended by zero or end of input
@@ -90,14 +92,16 @@ size_t cobs_encode(const uint8_t* input, size_t len, uint8_t* output, size_t max
             // Consume zero if present
             if (read_idx < len && input[read_idx] == 0) {
                 read_idx++;
+                trailing_zero = true;
             } else {
+                trailing_zero = false;
                 break; // End of input
             }
         }
     }
 
-    // Handle empty input or input that ends at a block boundary
-    if (len == 0) {
+    // If data ended with a zero, emit trailing 0x01 block
+    if (trailing_zero || len == 0) {
         if (out_idx >= max_out) return 0;
         output[out_idx++] = 0x01;
     }
