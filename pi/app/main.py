@@ -148,6 +148,8 @@ def main():
   async def shutdown_tasks():
     logger.info("Shutting down...")
     renderer.stop()
+    if hasattr(app.state, 'broadcast_task'):
+      app.state.broadcast_task.cancel()
     for task in _background_tasks:
       task.cancel()
     await asyncio.gather(*_background_tasks, return_exceptions=True)
