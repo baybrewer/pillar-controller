@@ -124,7 +124,7 @@ def serialize_channels(channel_data: np.ndarray) -> bytes:
 
 def wrap_x(x: int) -> int:
   """Horizontal wrap for cylindrical seam."""
-  return x % 10
+  return x % STRIPS
 
 
 def downsample_width(supersampled: np.ndarray, output_width: int = 10) -> np.ndarray:
