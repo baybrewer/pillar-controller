@@ -12,9 +12,9 @@ import numpy as np
 
 from ..base import Effect
 from ..engine.buffer import LEDBuffer
-from ..engine.noise import noise01, cyl_noise
+from ..engine.noise import noise01, cyl_noise, perlin_grid, noise01_grid, cyl_noise_grid, noise01_xy
 from ..engine.color import clampf
-from ..engine.palettes import pal_color, NUM_PALETTES
+from ..engine.palettes import pal_color, NUM_PALETTES, pal_color_grid
 from ...mapping.cylinder import N
 
 
@@ -68,16 +68,19 @@ class Plasma(Effect):
     cols = self.width
     rows = self.height
 
-    for x in range(cols):
-      ax = x / cols * 6.2832  # angle for cylinder wrap
-      for y in range(rows):
-        v = (math.sin(ax * 2 * scale + tt * 1.3) +
-             math.sin(y * scale * 0.035 + tt * 0.7) +
-             math.sin(ax * 3 * scale + y * scale * 0.02 + tt * 1.1) +
-             math.sin(math.sqrt(abs(math.sin(ax) * 4 + y * y * 0.001)) * scale * 2 + tt * 0.9) +
-             cyl_noise(x, y, tt * 0.5, scale, 0.01) * 1.5) / 5.0
-        c = pal_color(pal_idx % NUM_PALETTES, (v + 1) * 0.5)
-        self.buf.set_led(x, y, c[0], c[1], c[2])
+    # (cols, 1) and (1, rows) grids for broadcasting
+    ax = (np.arange(cols, dtype=np.float64) / cols * 6.2832)[:, np.newaxis]  # (cols, 1)
+    y_g = np.arange(rows, dtype=np.float64)[np.newaxis, :]  # (1, rows)
+
+    term1 = np.sin(ax * 2 * scale + tt * 1.3)
+    term2 = np.sin(y_g * scale * 0.035 + tt * 0.7)
+    term3 = np.sin(ax * 3 * scale + y_g * scale * 0.02 + tt * 1.1)
+    term4 = np.sin(np.sqrt(np.abs(np.sin(ax) * 4 + y_g * y_g * 0.001)) * scale * 2 + tt * 0.9)
+    term5 = cyl_noise_grid(cols, rows, tt * 0.5, scale, 0.01) * 1.5
+
+    v = (term1 + term2 + term3 + term4 + term5) / 5.0
+    hue = (v + 1) * 0.5
+    self.buf.data = pal_color_grid(pal_idx % NUM_PALETTES, hue)
 
     return self.buf.get_frame()
 
@@ -127,14 +130,18 @@ class AuroraBorealis(Effect):
     cols = self.width
     rows = self.height
 
-    for x in range(cols):
-      for y in range(rows):
-        curtain = noise01(x * 0.3, y * 0.008 * wave, tt * 0.5)
-        w = (math.sin(y * 0.02 * wave + tt * 2 + x * 0.8) + 1) * 0.5
-        shimmer = noise01(x * 0.5 + 100, y * 0.02, tt * 3) * 0.4
-        v = clampf(curtain * w * bright + shimmer * curtain * bright * 0.5)
-        c = pal_color(pal_idx % NUM_PALETTES, curtain * 0.8 + 0.1)
-        self.buf.set_led(x, y, int(c[0] * v), int(c[1] * v), int(c[2] * v))
+    # (cols, 1) and (1, rows) grids for broadcasting
+    x_g = np.arange(cols, dtype=np.float64)[:, np.newaxis]  # (cols, 1)
+    y_g = np.arange(rows, dtype=np.float64)[np.newaxis, :]  # (1, rows)
+
+    curtain = (perlin_grid(x_g * 0.3, y_g * 0.008 * wave, tt * 0.5) + 1.0) * 0.5
+    w = (np.sin(y_g * 0.02 * wave + tt * 2 + x_g * 0.8) + 1) * 0.5
+    shimmer = (perlin_grid(x_g * 0.5 + 100, y_g * 0.02, tt * 3) + 1.0) * 0.5 * 0.4
+    v = np.clip(curtain * w * bright + shimmer * curtain * bright * 0.5, 0.0, 1.0)
+
+    hue = curtain * 0.8 + 0.1
+    rgb = pal_color_grid(pal_idx % NUM_PALETTES, hue)
+    self.buf.data = (rgb.astype(np.float32) * v[..., np.newaxis]).clip(0, 255).astype(np.uint8)
 
     return self.buf.get_frame()
 
@@ -187,21 +194,27 @@ class LavaLamp(Effect):
     cols = self.width
     rows = self.height
 
-    self.buf.clear()
-    for x in range(cols):
-      for y in range(rows):
-        val = 0.0
-        for bi in range(num_blobs):
-          sx, sy = self._blob_seeds[bi]
-          bx = (cols / 2) + math.sin(tt * 0.7 + sx * 6.28) * cols * 0.4
-          by = (rows / 2) + math.sin(tt * 0.3 + sy * 6.28) * rows * 0.4
-          dx = (x - bx) / max(1, size * 2)
-          dy = (y - by) / max(1, size * 25)
-          dist_sq = dx * dx + dy * dy
-          val += 1.0 / (1.0 + dist_sq * 3)
-        val = clampf(val)
-        c = pal_color(pal_idx % NUM_PALETTES, val * 0.8 + 0.1)
-        self.buf.set_led(x, y, int(c[0] * val), int(c[1] * val), int(c[2] * val))
+    # (cols, 1) and (1, rows) grids for broadcasting
+    x_g = np.arange(cols, dtype=np.float64)[:, np.newaxis]  # (cols, 1)
+    y_g = np.arange(rows, dtype=np.float64)[np.newaxis, :]  # (1, rows)
+
+    size_x = max(1.0, size * 2)
+    size_y = max(1.0, size * 25)
+
+    val = np.zeros((cols, rows), dtype=np.float64)
+    for bi in range(num_blobs):
+      sx, sy = self._blob_seeds[bi]
+      bx = (cols / 2) + math.sin(tt * 0.7 + sx * 6.28) * cols * 0.4
+      by = (rows / 2) + math.sin(tt * 0.3 + sy * 6.28) * rows * 0.4
+      dx = (x_g - bx) / size_x
+      dy = (y_g - by) / size_y
+      dist_sq = dx * dx + dy * dy
+      val += 1.0 / (1.0 + dist_sq * 3)
+
+    val = np.clip(val, 0.0, 1.0)
+    hue = val * 0.8 + 0.1
+    rgb = pal_color_grid(pal_idx % NUM_PALETTES, hue)
+    self.buf.data = (rgb.astype(np.float32) * val[..., np.newaxis]).clip(0, 255).astype(np.uint8)
 
     return self.buf.get_frame()
 
@@ -254,21 +267,24 @@ class OceanWaves(Effect):
     cols = self.width
     rows = self.height
 
-    for x in range(cols):
-      for y in range(rows):
-        v = 0.0
-        for layer in range(num_layers):
-          freq = (layer + 1) * 0.5
-          phase = layer * 1.7
-          v += math.sin(
-            y * 0.02 * depth * freq + tt * (1 + layer * 0.4)
-            + phase + x * 0.3 * freq
-          ) / num_layers
-        v = (v + 1) * 0.5
-        depth_fade = 1.0 - (rows - 1 - y) / rows * 0.3
-        v *= depth_fade
-        c = pal_color(pal_idx % NUM_PALETTES, v)
-        self.buf.set_led(x, y, c[0], c[1], c[2])
+    # (cols, 1) and (1, rows) grids for broadcasting
+    x_g = np.arange(cols, dtype=np.float64)[:, np.newaxis]  # (cols, 1)
+    y_g = np.arange(rows, dtype=np.float64)[np.newaxis, :]  # (1, rows)
+
+    v = np.zeros((cols, rows), dtype=np.float64)
+    for layer in range(num_layers):
+      freq = (layer + 1) * 0.5
+      phase = layer * 1.7
+      v += np.sin(
+        y_g * 0.02 * depth * freq + tt * (1 + layer * 0.4)
+        + phase + x_g * 0.3 * freq
+      ) / num_layers
+
+    v = (v + 1) * 0.5
+    depth_fade = 1.0 - (rows - 1 - y_g) / rows * 0.3  # (1, rows)
+    v *= depth_fade
+
+    self.buf.data = pal_color_grid(pal_idx % NUM_PALETTES, v)
 
     return self.buf.get_frame()
 

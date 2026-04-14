@@ -3,6 +3,8 @@
 10 standard palettes, 17 Feldstein custom palettes, and fire palette.
 """
 
+import numpy as np
+
 from .color import clamp
 
 # ─── Palette builder ─────────────────────────────────────────────
@@ -112,3 +114,22 @@ FIRE_PALETTE = _build_fire_palette()
 def fire_color(h01):
   """Get fire color at intensity h (0-1)."""
   return FIRE_PALETTE[clamp(int(h01 * 255))]
+
+
+# ─── Pre-computed numpy arrays for vectorized palette lookup ───────
+
+_PAL_ARRAYS = [np.array(pal, dtype=np.uint8) for _, pal in PALETTES]
+_FIRE_PAL_ARRAY = np.array(FIRE_PALETTE, dtype=np.uint8)
+
+
+def pal_color_grid(pal_idx, t_array):
+  """Vectorized palette lookup. t_array is float 0-1, returns (..., 3) uint8."""
+  pal = _PAL_ARRAYS[pal_idx % NUM_PALETTES]
+  idx = np.clip((t_array * 255).astype(np.int32), 0, 255)
+  return pal[idx]
+
+
+def fire_color_grid(h_array):
+  """Vectorized fire palette lookup. h_array is float 0-1, returns (..., 3) uint8."""
+  idx = np.clip((h_array * 255).astype(np.int32), 0, 255)
+  return _FIRE_PAL_ARRAY[idx]

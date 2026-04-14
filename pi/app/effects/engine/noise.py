@@ -108,6 +108,11 @@ _perlin = perlin
 _fbm = fbm
 
 
+def noise01_xy(x_arr, y_arr, z_arr):
+  """Vectorized noise01 for arbitrary position arrays. Returns 0-1."""
+  return (perlin_grid(x_arr, y_arr, z_arr) + 1.0) * 0.5
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  VECTORIZED (NumPy) IMPLEMENTATIONS — 50-100x faster for grids
 # ═══════════════════════════════════════════════════════════════════
@@ -195,6 +200,20 @@ def cyl_noise_grid(cols, rows, t, x_scale=1.0, y_scale=0.01):
   sy_grid = sy[:, np.newaxis] * np.ones(rows)
   z_grid = np.ones(cols)[:, np.newaxis] * yv
   return perlin_grid(cx_grid, sy_grid, z_grid)
+
+
+def cyl_noise_xy(x_arr, y_arr, t, x_scale=1.0, y_scale=0.01, cols=_COLS):
+  """Vectorized cylinder noise for arbitrary (x, y) position arrays."""
+  angles = x_arr / cols * 6.2832
+  r = cols * x_scale / 6.2832
+  return perlin_grid(np.cos(angles) * r, np.sin(angles) * r, y_arr * y_scale + t)
+
+
+def cyl_fbm_xy(x_arr, y_arr, t, octaves=2, x_scale=1.0, y_scale=0.01, cols=_COLS):
+  """Vectorized cylinder FBM for arbitrary (x, y) position arrays."""
+  angles = x_arr / cols * 6.2832
+  r = cols * x_scale / 6.2832
+  return fbm_grid(np.cos(angles) * r, np.sin(angles) * r, y_arr * y_scale + t, octaves)
 
 
 def cyl_fbm_grid(cols, rows, t, octaves=2, x_scale=1.0, y_scale=0.01):

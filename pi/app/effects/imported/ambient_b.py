@@ -12,9 +12,9 @@ import numpy as np
 
 from ..base import Effect
 from ..engine.buffer import LEDBuffer
-from ..engine.noise import perlin as _perlin, fbm as _fbm, cyl_noise
+from ..engine.noise import perlin as _perlin, fbm as _fbm, cyl_noise, perlin_grid, fbm_grid
 from ..engine.color import clampf
-from ..engine.palettes import pal_color
+from ..engine.palettes import pal_color, pal_color_grid
 from ...mapping.cylinder import N
 
 
@@ -68,12 +68,16 @@ class Breathing(Effect):
 
     breath = (math.sin(tt * 2) + 1) * 0.5
 
-    for x in range(self.width):
-      for y in range(self.height):
-        hue_shift = y / self.height + math.sin(y * 0.01 * wave + tt) * 0.1
-        b = breath * (0.7 + 0.3 * math.sin(y * 0.02 * wave + x * 0.5 + tt * 0.5))
-        c = pal_color(pal_idx, hue_shift % 1.0)
-        self.buf.set_led(x, y, int(c[0] * b), int(c[1] * b), int(c[2] * b))
+    # Build coordinate grids: x_g is (cols, 1), y_g is (1, rows)
+    x_g = np.arange(self.width, dtype=np.float64)[:, np.newaxis]
+    y_g = np.arange(self.height, dtype=np.float64)[np.newaxis, :]
+
+    # Vectorized hue and brightness — (cols, rows) arrays
+    hue_shift = y_g / self.height + np.sin(y_g * 0.01 * wave + tt) * 0.1
+    b = breath * (0.7 + 0.3 * np.sin(y_g * 0.02 * wave + x_g * 0.5 + tt * 0.5))
+
+    rgb = pal_color_grid(pal_idx, hue_shift % 1.0)  # (cols, rows, 3) uint8
+    self.buf.data = (rgb.astype(np.float32) * b[..., np.newaxis]).clip(0, 255).astype(np.uint8)
 
     return self.buf.get_frame()
 
@@ -211,14 +215,22 @@ class Nebula(Effect):
     self._t += dt_ms * 0.001 * speed
     tt = self._t
 
-    for x in range(self.width):
-      for y in range(self.height):
-        v = _fbm(x * 0.15 * scale + 10, y * 0.008 * scale, tt * 0.5, layers)
-        v2 = _fbm(x * 0.2 * scale + 50, y * 0.006 * scale, tt * 0.3 + 100, layers)
-        hue = (v + 1) * 0.5
-        bright = clampf((v2 + 0.8) * 0.7)
-        c = pal_color(pal_idx, hue)
-        self.buf.set_led(x, y, int(c[0] * bright), int(c[1] * bright), int(c[2] * bright))
+    # Build coordinate grids: x_g is (cols, 1), y_g is (1, rows)
+    x_g = np.arange(self.width, dtype=np.float64)[:, np.newaxis]
+    y_g = np.arange(self.height, dtype=np.float64)[np.newaxis, :]
+
+    # Pre-broadcast to (cols, rows) — fbm_grid needs matching shapes for np.zeros_like
+    xb, yb = np.broadcast_arrays(x_g, y_g)
+
+    # Vectorized FBM — two (cols, rows) noise fields
+    v = fbm_grid(xb * 0.15 * scale + 10, yb * 0.008 * scale, tt * 0.5, layers)
+    v2 = fbm_grid(xb * 0.2 * scale + 50, yb * 0.006 * scale, tt * 0.3 + 100, layers)
+
+    hue = (v + 1) * 0.5
+    bright = np.clip((v2 + 0.8) * 0.7, 0.0, 1.0)
+
+    rgb = pal_color_grid(pal_idx, hue)  # (cols, rows, 3) uint8
+    self.buf.data = (rgb.astype(np.float32) * bright[..., np.newaxis]).clip(0, 255).astype(np.uint8)
 
     return self.buf.get_frame()
 
@@ -271,21 +283,23 @@ class Kaleidoscope(Effect):
     seg_angle = 6.28 / seg
     half_seg = 3.14 / seg
 
-    for x in range(self.width):
-      for y in range(self.height):
-        dx = (x - cx) / max(1, cx)
-        dy = (y - cy) / max(1, cy) * 0.3
-        angle = math.atan2(dy, dx)
-        dist = math.sqrt(dx * dx + dy * dy) * zm
+    # Build coordinate grids: x_g is (cols, 1), y_g is (1, rows)
+    x_g = np.arange(self.width, dtype=np.float64)[:, np.newaxis]
+    y_g = np.arange(self.height, dtype=np.float64)[np.newaxis, :]
 
-        # Mirror into segments
-        angle = abs(((angle + tt) % seg_angle) - half_seg)
-        v = math.sin(dist * 5 + tt * 2) * 0.5 + math.sin(angle * seg + tt) * 0.5
-        hue = (v + 1) * 0.25 + dist * 0.3
-        bright = clampf(0.3 + (math.sin(dist * 3 - tt * 2) + 1) * 0.35)
+    dx = (x_g - cx) / max(1, cx)
+    dy = (y_g - cy) / max(1, cy) * 0.3
+    angle = np.arctan2(dy, dx)
+    dist = np.sqrt(dx ** 2 + dy ** 2) * zm
 
-        c = pal_color(pal_idx, hue % 1.0)
-        self.buf.set_led(x, y, int(c[0] * bright), int(c[1] * bright), int(c[2] * bright))
+    # Mirror into segments
+    angle = np.abs(((angle + tt) % seg_angle) - half_seg)
+    v = np.sin(dist * 5 + tt * 2) * 0.5 + np.sin(angle * seg + tt) * 0.5
+    hue = (v + 1) * 0.25 + dist * 0.3
+    bright = np.clip(0.3 + (np.sin(dist * 3 - tt * 2) + 1) * 0.35, 0.0, 1.0)
+
+    rgb = pal_color_grid(pal_idx, hue % 1.0)  # (cols, rows, 3) uint8
+    self.buf.data = (rgb.astype(np.float32) * bright[..., np.newaxis]).clip(0, 255).astype(np.uint8)
 
     return self.buf.get_frame()
 
@@ -423,22 +437,26 @@ class Moire(Effect):
       cy = rows / 2 + math.sin(tt * 0.3 + phase * 1.7) * rows * 0.35
       centers.append((cx, cy))
 
-    for x in range(cols):
-      for y in range(rows):
-        val = 0.0
-        for cx, cy in centers:
-          # Cylinder-aware distance: shortest path around
-          dx = x - cx
-          if abs(dx) > cols / 2:
-            dx = dx - cols if dx > 0 else dx + cols
-          dy = (y - cy) * (cols / rows) * 5  # aspect correction
-          dist = math.sqrt(dx * dx + dy * dy)
-          val += math.sin(dist * sc * 3 + tt * 2)
-        val /= nc
-        hue = (val + 1) * 0.5
-        bright = clampf((abs(val) ** 0.5) * 0.9 + 0.1)
-        c = pal_color(pal_idx, hue)
-        self.buf.set_led(x, y, int(c[0] * bright), int(c[1] * bright), int(c[2] * bright))
+    # Build coordinate grids: x_g is (cols, 1), y_g is (1, rows)
+    x_g = np.arange(cols, dtype=np.float64)[:, np.newaxis]
+    y_g = np.arange(rows, dtype=np.float64)[np.newaxis, :]
+
+    # Accumulate interference from each center
+    val = np.zeros((cols, rows), dtype=np.float64)
+    for cx, cy in centers:
+      # Cylinder-aware distance: shortest path around x-axis
+      dx = x_g - cx
+      dx = np.where(np.abs(dx) > cols / 2, dx - np.sign(dx) * cols, dx)
+      dy = (y_g - cy) * (cols / rows) * 5  # aspect correction
+      dist = np.sqrt(dx ** 2 + dy ** 2)
+      val += np.sin(dist * sc * 3 + tt * 2)
+    val /= nc
+
+    hue = (val + 1) * 0.5
+    bright = np.clip((np.abs(val) ** 0.5) * 0.9 + 0.1, 0.0, 1.0)
+
+    rgb = pal_color_grid(pal_idx, hue)  # (cols, rows, 3) uint8
+    self.buf.data = (rgb.astype(np.float32) * bright[..., np.newaxis]).clip(0, 255).astype(np.uint8)
 
     return self.buf.get_frame()
 

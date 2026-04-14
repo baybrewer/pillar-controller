@@ -12,11 +12,11 @@ import numpy as np
 
 from ..base import Effect
 from ..engine.buffer import LEDBuffer
-from ..engine.noise import perlin as _perlin, cyl_noise, cyl_fbm, cyl_noise_grid, cyl_fbm_grid, perlin_grid
+from ..engine.noise import perlin as _perlin, cyl_noise, cyl_fbm, cyl_noise_grid, cyl_fbm_grid, perlin_grid, cyl_noise_xy, cyl_fbm_xy
 from ..engine.color import hsv2rgb, clamp, clampf, qsub8, qadd8, scale8
 from ..engine.palettes import (
   FELDSTEIN_PALETTES, NUM_FELDSTEIN_PALETTES,
-  fire_color, pal_color,
+  fire_color, pal_color, fire_color_grid, pal_color_grid,
 )
 from ...mapping.cylinder import N
 
@@ -104,9 +104,7 @@ class RainbowCycle(Effect):
       self._timer -= 100
 
     c = pal_color(pal_idx, self._hue / 255.0)
-    for x in range(self.width):
-      for y in range(self.height):
-        self.buf.set_led(x, y, c[0], c[1], c[2])
+    self.buf.data[:] = [c[0], c[1], c[2]]
 
     return self.buf.get_frame()
 
@@ -389,20 +387,32 @@ class BrettsFavorite(Effect):
     for i in range(bands):
       self._pos[i] = (self._pos[i] + int(self._spd[i] * speed)) & 255
 
-    # Render
+    # Render — vectorized per-band
     self.buf.clear()
-    band_h = max(1, self.height // bands)
-    for y in range(self.height):
-      band_idx = min(y // band_h, bands - 1)
-      p = self._pos[band_idx]
+    cols = self.width
+    rows = self.height
+    band_h = max(1, rows // bands)
+    x_arr = np.arange(cols, dtype=np.float64)
+
+    for band_idx in range(bands):
+      y0 = band_idx * band_h
+      y1 = min(y0 + band_h, rows)
+      if y0 >= rows:
+        break
       base_hue = (self._hue + self._spd[band_idx]) & 255
       base_sat = max(0, 255 - abs(self._spd[band_idx]) * 3)
-      for x in range(self.width):
-        # sin8 equivalent: sine wave across width
-        phase = (p + x * 256 // self.width) & 255
-        val = max(0, int((math.sin(phase / 255.0 * 6.2832) + 1) * 127.5) - 20)
-        c = hsv2rgb(base_hue, base_sat, val)
-        self.buf.set_led(x, y, c[0], c[1], c[2])
+      r_c, g_c, b_c = hsv2rgb(base_hue, base_sat, 255)
+      p = self._pos[band_idx]
+      # Vectorized sine across width
+      phase = ((p + x_arr * 256 / cols) % 256) / 255.0 * 6.2832
+      val = np.clip((np.sin(phase) + 1) * 127.5 - 20, 0, 255).astype(np.uint16)
+      # Scale base color by val, broadcast to all rows in this band
+      band_rows = y1 - y0
+      band_rgb = np.zeros((cols, band_rows, 3), dtype=np.uint8)
+      band_rgb[..., 0] = (val[:, np.newaxis] * r_c // 255).astype(np.uint8)
+      band_rgb[..., 1] = (val[:, np.newaxis] * g_c // 255).astype(np.uint8)
+      band_rgb[..., 2] = (val[:, np.newaxis] * b_c // 255).astype(np.uint8)
+      self.buf.data[:, y0:y1] = band_rgb
 
     return self.buf.get_frame()
 
@@ -462,16 +472,14 @@ class Fireplace(Effect):
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
-    self._heat = [[0.0] * height for _ in range(width)]
+    self._heat = np.zeros((width, height), dtype=np.float64)
     self._time = 0.0
     self._embers = []
     self._last_t = None
 
     # Warm up the spark zone
     spark_zone = int(self.params.get("spark_zone", 35))
-    for x in range(width):
-      for y in range(height - spark_zone, height):
-        self._heat[x][y] = random.uniform(0.4, 0.9)
+    self._heat[:, height - spark_zone:] = np.random.uniform(0.4, 0.9, (width, spark_zone))
 
   def render(self, t, state):
     dt_ms = self._calc_dt_ms(t)
@@ -485,7 +493,7 @@ class Fireplace(Effect):
     # Read all params
     fuel = clampf(self.params.get("fuel", 0.6))
     fuel_sq = fuel * fuel
-    spark_zone = max(3, int(self.params.get("spark_zone", 35) * (0.2 + fuel * 0.8)))
+    sz = max(3, int(self.params.get("spark_zone", 35) * (0.2 + fuel * 0.8)))
     spark_prob = self.params.get("spark_prob", 0.85)
     cool_base = self.params.get("cool_base", 0.012)
     cool_height = self.params.get("cool_height", 0.045)
@@ -501,21 +509,33 @@ class Fireplace(Effect):
     ember_burst = max(1, int(self.params.get("ember_burst", 6)))
     ember_spread = self.params.get("ember_spread", 0.65)
 
-    # ── Sparks ──────────────────────────────────────────────────
-    for x in range(cols):
-      cw = 1.0 - abs(x - center) / (center + 0.5) * 0.25
-      hotspot = (cyl_noise(x * 2, sim_t * 3, sim_t * 0.5, 1.0, 1.0) + 1) * 0.5
-      for yo in range(spark_zone):
-        y = rows - 1 - yo
-        if y < 0:
-          break
-        depth_factor = 1.0 - yo / spark_zone * 0.6
-        prob = spark_prob * fuel * cw * depth_factor * (0.5 + hotspot * 0.7)
-        if random.random() < prob:
-          intensity = random.uniform(self._SPARK_MIN, self._SPARK_MAX) * (0.3 + fuel * 0.7)
-          self._heat[x][y] = min(1.0, self._heat[x][y] + intensity * cw * dt)
+    # ── Sparks (vectorized) ──────────────────────────────────────
+    # Per-column hotspot (10 scalar noise calls — negligible)
+    hotspots = np.array([
+      (cyl_noise(x * 2, sim_t * 3, sim_t * 0.5, 1.0, 1.0) + 1) * 0.5
+      for x in range(cols)
+    ])
+    cw_arr = 1.0 - np.abs(np.arange(cols, dtype=np.float64) - center) / (center + 0.5) * 0.25
+    yo_arr = np.arange(sz)
+    y_arr = rows - 1 - yo_arr
+    valid = y_arr >= 0
+    yo_arr = yo_arr[valid]
+    y_arr = y_arr[valid]
+    depth_arr = 1.0 - yo_arr / sz * 0.6
 
-    # ── Flares ──────────────────────────────────────────────────
+    # Probability grid: (cols, len(yo_arr))
+    prob_grid = spark_prob * fuel * cw_arr[:, np.newaxis] * depth_arr[np.newaxis, :] * (0.5 + hotspots[:, np.newaxis] * 0.7)
+    rand_grid = np.random.random((cols, len(yo_arr)))
+    spark_mask = rand_grid < prob_grid
+
+    # Apply sparks where mask is True
+    intensity_grid = np.random.uniform(self._SPARK_MIN, self._SPARK_MAX, (cols, len(yo_arr))) * (0.3 + fuel * 0.7)
+    heat_add = np.zeros_like(spark_mask, dtype=np.float64)
+    heat_add[spark_mask] = intensity_grid[spark_mask] * cw_arr[np.where(spark_mask)[0]] * dt
+    for j in range(len(y_arr)):
+      self._heat[:, y_arr[j]] = np.minimum(1.0, self._heat[:, y_arr[j]] + heat_add[:, j])
+
+    # ── Flares (keep scalar — rarely triggers) ───────────────────
     if random.random() < self._FLARE_PROB * fuel_sq:
       fc = random.randint(0, cols - 1)
       flare_height = int(random.randint(15, min(rows // 2, 60)) * (0.3 + fuel * 0.7))
@@ -524,79 +544,76 @@ class Fireplace(Effect):
         for yo in range(flare_height):
           y = rows - 1 - yo
           fade = 1.0 - yo / flare_height
-          self._heat[fx][y] = min(1.0, self._heat[fx][y] + 0.6 * fade * dt)
+          self._heat[fx, y] = min(1.0, self._heat[fx, y] + 0.6 * fade * dt)
 
-    # ── Convection ──────────────────────────────────────────────
-    new_heat = [[0.0] * rows for _ in range(cols)]
-    for x in range(cols):
-      for y in range(rows):
-        nx = cyl_fbm(x, y, sim_t * 8.0, octs, 0.5, 0.015)
-        ny = cyl_fbm(x + 5, y, sim_t * 7.0, octs, 0.5, 0.015)
-        lh = self._heat[x][y]
-        sx = x + nx * turb_x
-        sy = y + ty_bias + lh * buoy + abs(ny) * ty_range
-        sx = max(0.0, min(cols - 1.001, sx))
-        sy = max(0.0, min(rows - 1.001, sy))
-        ix = int(sx)
-        iy = int(sy)
-        ffx = sx - ix
-        ffy = sy - iy
-        ix2 = min(ix + 1, cols - 1)
-        iy2 = min(iy + 1, rows - 1)
-        new_heat[x][y] = (
-          self._heat[ix][iy] * (1 - ffx) * (1 - ffy)
-          + self._heat[ix2][iy] * ffx * (1 - ffy)
-          + self._heat[ix][iy2] * (1 - ffx) * ffy
-          + self._heat[ix2][iy2] * ffx * ffy
-        )
+    # ── Convection (vectorized — was THE bottleneck) ─────────────
+    x_g = np.arange(cols, dtype=np.float64)[:, np.newaxis] * np.ones(rows)  # (cols, rows)
+    y_g = np.ones(cols)[:, np.newaxis] * np.arange(rows, dtype=np.float64)  # (cols, rows)
 
-    # ── Lateral diffusion (wraps around cylinder) ───────────────
-    for y in range(rows):
-      snap = [new_heat[x][y] for x in range(cols)]
-      for x in range(cols):
-        new_heat[x][y] = (
-          snap[x] * diffuse_ctr
-          + snap[(x - 1) % cols] * diffuse_side
-          + snap[(x + 1) % cols] * diffuse_side
-        )
+    # Two FBM noise grids
+    nx = cyl_fbm_xy(x_g, y_g, sim_t * 8.0, octs, 0.5, 0.015, cols)
+    ny = cyl_fbm_xy(x_g + 5, y_g, sim_t * 7.0, octs, 0.5, 0.015, cols)
 
-    # ── Cooling ─────────────────────────────────────────────────
+    # Source positions for advection
+    sx = np.clip(x_g + nx * turb_x, 0, cols - 1.001)
+    sy = np.clip(y_g + ty_bias + self._heat * buoy + np.abs(ny) * ty_range, 0, rows - 1.001)
+
+    # Bilinear interpolation from heat grid
+    ix = np.clip(sx.astype(np.int32), 0, cols - 2)
+    iy = np.clip(sy.astype(np.int32), 0, rows - 2)
+    fx = sx - ix
+    fy = sy - iy
+    ix2 = np.minimum(ix + 1, cols - 1)
+    iy2 = np.minimum(iy + 1, rows - 1)
+    new_heat = (
+      self._heat[ix, iy] * (1 - fx) * (1 - fy)
+      + self._heat[ix2, iy] * fx * (1 - fy)
+      + self._heat[ix, iy2] * (1 - fx) * fy
+      + self._heat[ix2, iy2] * fx * fy
+    )
+
+    # ── Lateral diffusion (vectorized with np.roll) ──────────────
+    new_heat = (
+      new_heat * diffuse_ctr
+      + np.roll(new_heat, 1, axis=0) * diffuse_side
+      + np.roll(new_heat, -1, axis=0) * diffuse_side
+    )
+
+    # ── Cooling (vectorized) ─────────────────────────────────────
     fuel_cool = 1.5 - fuel
     cb = cool_base * fuel_cool
     ch = cool_height * fuel_cool
-    for x in range(cols):
-      for y in range(rows):
-        hf = (rows - 1 - y) / float(rows)  # 0=bottom, 1=top
-        cn = (cyl_noise(x, y, sim_t * 10.0, 0.8, 0.03) + 1) * 0.5
-        if hf < 0.5:
-          cool = (cb * 0.3 + cn * cool_noise_amt * 0.15 + random.random() * 0.003) * dt
-        else:
-          top_frac = (hf - 0.5) * 2
-          cool = (
-            cb + top_frac * top_frac * ch
-            + cn * cool_noise_amt * top_frac
-            + random.random() * 0.005
-          ) * dt
-        new_heat[x][y] = max(0.0, new_heat[x][y] - cool)
+    hf = (rows - 1 - y_g) / float(rows)  # 0=bottom, 1=top
+    cn = (cyl_noise_xy(x_g, y_g, sim_t * 10.0, 0.8, 0.03, cols) + 1) * 0.5
+    rng = np.random.random((cols, rows))
+    top_frac = np.clip((hf - 0.5) * 2, 0, 1)
+    cool = np.where(
+      hf < 0.5,
+      (cb * 0.3 + cn * cool_noise_amt * 0.15 + rng * 0.003) * dt,
+      (cb + top_frac ** 2 * ch + cn * cool_noise_amt * top_frac + rng * 0.005) * dt,
+    )
+    new_heat = np.maximum(0, new_heat - cool)
     self._heat = new_heat
 
-    # ── Ember bed — glowing coals across bottom 12 rows ─────────
-    for x in range(cols):
-      for yo in range(12):
-        y = rows - 1 - yo
-        if y < 0:
-          break
-        glow = 0.30 - yo * 0.02
-        shimmer = (cyl_noise(x * 2 + 500, yo * 0.5, sim_t * 1.5, 1.0, 1.0) + 1) * 0.05
-        self._heat[x][y] = max(self._heat[x][y], glow + shimmer)
+    # ── Ember bed — glowing coals across bottom 12 rows ──────────
+    for yo in range(12):
+      y = rows - 1 - yo
+      if y < 0:
+        break
+      glow = 0.30 - yo * 0.02
+      shimmer_arr = np.array([
+        (cyl_noise(x * 2 + 500, yo * 0.5, sim_t * 1.5, 1.0, 1.0) + 1) * 0.05
+        for x in range(cols)
+      ])
+      self._heat[:, y] = np.maximum(self._heat[:, y], glow + shimmer_arr)
 
-    # ── Ember particles ─────────────────────────────────────────
+    # ── Ember particles (keep scalar — sparse particle system) ────
     dt_s = dt_ms * 0.001
     if ember_rate > 0 and fuel > 0.1:
       real_rate = ember_rate * (0.1 + fuel_sq * 0.9)
       for x in range(cols):
         for y in range(0, rows, 3):
-          h = self._heat[x][y]
+          h = self._heat[x, y]
           if 0.15 < h < 0.65 and random.random() < real_rate * h * dt_s * 1.5:
             burst = max(1, int(random.gauss(ember_burst, ember_burst * 0.5)))
             for _ in range(burst):
@@ -616,13 +633,10 @@ class Fireplace(Effect):
         alive.append(e)
     self._embers = alive
 
-    # ── Render heat ─────────────────────────────────────────────
-    for x in range(cols):
-      for y in range(rows):
-        c = fire_color(self._heat[x][y])
-        self.buf.set_led(x, y, c[0], c[1], c[2])
+    # ── Render heat (vectorized) ─────────────────────────────────
+    self.buf.data = fire_color_grid(self._heat)
 
-    # ── Render embers ───────────────────────────────────────────
+    # ── Render embers (keep scalar — sparse particles) ───────────
     for e in self._embers:
       ecol = int(round(e.x))
       erow = int(round(e.y))

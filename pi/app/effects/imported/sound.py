@@ -4,6 +4,8 @@ Sound-reactive animations ported from led_sim_reference.py.
 10 effects: Spectrum, VUMeter, BeatPulse, BassFire, SoundRipples,
 Spectrogram, SoundWorm, ParticleBurst, SoundPlasma, StrobeChaos.
 Each wraps AudioCompatAdapter internally.
+
+Vectorized with numpy for 60+ FPS on Raspberry Pi.
 """
 
 import math
@@ -14,8 +16,15 @@ import numpy as np
 from ..base import Effect
 from ..engine.buffer import LEDBuffer
 from ..engine.color import hsv2rgb, clamp, clampf
-from ..engine.palettes import pal_color, fire_color, NUM_PALETTES
-from ..engine.noise import cyl_noise, cyl_fbm
+from ..engine.palettes import (
+  pal_color, fire_color, NUM_PALETTES,
+  pal_color_grid, fire_color_grid,
+)
+from ..engine.noise import (
+  cyl_noise, cyl_fbm,
+  cyl_noise_xy, cyl_fbm_xy,
+  cyl_noise_grid,
+)
 from ...audio.adapter import AudioCompatAdapter
 from ...mapping.cylinder import N
 
@@ -120,19 +129,26 @@ class Spectrum(Effect):
       if self._peak_age[i] > 30:
         self._peaks[i] = max(0, self._peaks[i] - 1)
 
-      for y_off in range(min(h, rows)):
-        row = rows - 1 - y_off
+      # Vectorized bar fill for this column
+      bar_h = min(h, rows)
+      if bar_h > 0:
+        y_off_arr = np.arange(bar_h, dtype=np.float64)
+        row_arr = rows - 1 - y_off_arr  # row indices (bottom-up)
         if self._drop_flash > 0.1:
-          c = pal_color(0, (y_off / rows + i / cols) % 1.0)
+          hue_arr = (y_off_arr / rows + i / cols) % 1.0
+          rgb = pal_color_grid(0, hue_arr)  # (bar_h, 3) uint8
           b = self._drop_flash
-          self.buf.set_led(i, row, int(c[0] * b), int(c[1] * b), int(c[2] * b))
+          self.buf.data[i, (rows - bar_h):rows] = (
+            rgb[::-1].astype(np.float32) * b
+          ).clip(0, 255).astype(np.uint8)
         else:
-          c = pal_color(pal_idx % NUM_PALETTES, y_off / rows)
-          self.buf.set_led(i, row, c[0], c[1], c[2])
+          hue_arr = y_off_arr / rows
+          rgb = pal_color_grid(pal_idx % NUM_PALETTES, hue_arr)
+          self.buf.data[i, (rows - bar_h):rows] = rgb[::-1]
 
       pk = int(self._peaks[i])
       if 0 < pk < rows:
-        self.buf.set_led(i, rows - 1 - pk, 255, 255, 255)
+        self.buf.data[i, rows - 1 - pk] = (255, 255, 255)
 
     return self.buf.get_frame()
 
@@ -194,9 +210,7 @@ class VUMeter(Effect):
     if audio.breakdown:
       breath = (math.sin(audio._time * 4) + 1) * 0.15
       c = pal_color(pal_idx % NUM_PALETTES, 0.5)
-      for x in range(cols):
-        for y in range(rows):
-          self.buf.set_led(x, y, int(c[0] * breath), int(c[1] * breath), int(c[2] * breath))
+      self.buf.data[:] = [int(c[0] * breath), int(c[1] * breath), int(c[2] * breath)]
       return self.buf.get_frame()
 
     adjusted_gain = gain * (1 + audio.buildup * 0.8)
@@ -204,18 +218,19 @@ class VUMeter(Effect):
     self._h = max(target, self._h * decay)
     h = int(self._h)
 
-    for x in range(cols):
-      for y_off in range(min(h, rows)):
-        row = rows - 1 - y_off
-        if self._drop_flash > 0.1:
-          c = pal_color(0, (y_off / rows + self._drop_hue) % 1.0)
-          self.buf.set_led(x, row,
-                           int(c[0] * self._drop_flash),
-                           int(c[1] * self._drop_flash),
-                           int(c[2] * self._drop_flash))
-        else:
-          c = pal_color(pal_idx % NUM_PALETTES, y_off / rows)
-          self.buf.set_led(x, row, c[0], c[1], c[2])
+    bar_h = min(h, rows)
+    if bar_h > 0:
+      y_off_arr = np.arange(bar_h, dtype=np.float64)
+      if self._drop_flash > 0.1:
+        hue_arr = (y_off_arr / rows + self._drop_hue) % 1.0
+        rgb = pal_color_grid(0, hue_arr)  # (bar_h, 3)
+        rgb_scaled = (rgb.astype(np.float32) * self._drop_flash).clip(0, 255).astype(np.uint8)
+        # Fill all columns with the same bar (broadcast)
+        self.buf.data[:, (rows - bar_h):rows] = rgb_scaled[::-1][np.newaxis, :, :]
+      else:
+        hue_arr = y_off_arr / rows
+        rgb = pal_color_grid(pal_idx % NUM_PALETTES, hue_arr)
+        self.buf.data[:, (rows - bar_h):rows] = rgb[::-1][np.newaxis, :, :]
 
     return self.buf.get_frame()
 
@@ -282,9 +297,7 @@ class BeatPulse(Effect):
       if strobe_on:
         hue = (self._hue + random.random() * 0.3) % 1.0
         c = pal_color(0, hue)  # rainbow strobe
-        for x in range(cols):
-          for y in range(rows):
-            self.buf.set_led(x, y, c[0], c[1], c[2])
+        self.buf.data[:] = [c[0], c[1], c[2]]
       else:
         self.buf.clear()
       return self.buf.get_frame()
@@ -293,17 +306,13 @@ class BeatPulse(Effect):
     if audio.breakdown:
       b = (math.sin(audio._time * 6) + 1) * 0.1
       c = pal_color(pal_idx % NUM_PALETTES, self._hue)
-      for x in range(cols):
-        for y in range(rows):
-          self.buf.set_led(x, y, int(c[0] * b), int(c[1] * b), int(c[2] * b))
+      self.buf.data[:] = [int(c[0] * b), int(c[1] * b), int(c[2] * b)]
       return self.buf.get_frame()
 
     self._energy *= decay
     c = pal_color(pal_idx % NUM_PALETTES, self._hue)
     e = self._energy
-    for x in range(cols):
-      for y in range(rows):
-        self.buf.set_led(x, y, int(c[0] * e), int(c[1] * e), int(c[2] * e))
+    self.buf.data[:] = [int(c[0] * e), int(c[1] * e), int(c[2] * e)]
 
     return self.buf.get_frame()
 
@@ -358,7 +367,7 @@ class BassFire(Effect):
     super().__init__(width, height, params)
     self._audio_adapter = AudioCompatAdapter()
     self.buf = LEDBuffer(width, height)
-    self._heat = [[0.0] * height for _ in range(width)]
+    self._heat = np.zeros((width, height), dtype=np.float64)
     self._embers = []
     self._time = 0.0
     self._rainbow_timer = 0.0
@@ -370,10 +379,13 @@ class BassFire(Effect):
     self._flare_prob = 0.025
     self._last_t = None
 
+    # Pre-compute coordinate grids (reused every frame)
+    self._x_g = np.arange(width, dtype=np.float64)[:, np.newaxis] * np.ones(height)
+    self._y_g = np.ones(width)[:, np.newaxis] * np.arange(height, dtype=np.float64)
+
     # Warm up the spark zone
-    for x in range(width):
-      for y in range(height - self._SPARK_ZONE, height):
-        self._heat[x][y] = random.uniform(0.4, 0.9)
+    self._heat[:, height - self._SPARK_ZONE:] = np.random.uniform(
+      0.4, 0.9, (width, self._SPARK_ZONE))
 
   def render(self, t, state):
     dt_ms = self._calc_dt_ms(t)
@@ -401,32 +413,22 @@ class BassFire(Effect):
     if audio.beat:
       self._flare_prob = 0.6
       self._spark_max = 1.0
-      for x in range(cols):
-        for yo in range(8):
-          y = rows - 1 - yo
-          if y >= 0:
-            self._heat[x][y] = min(1.0,
-              self._heat[x][y] + audio.beat_energy * 0.4)
+      self._heat[:, (rows - 8):rows] = np.minimum(
+        1.0, self._heat[:, (rows - 8):rows] + audio.beat_energy * 0.4)
 
     # Downbeat: color-shifted flare
     if audio.is_downbeat:
       self._flare_prob = 0.95
       self._flash_bright = 0.6
       self._flash_hue = (self._flash_hue + 0.25) % 1.0
-      for x in range(cols):
-        for yo in range(15):
-          y = rows - 1 - yo
-          if y >= 0:
-            self._heat[x][y] = min(1.0, self._heat[x][y] + 0.6)
+      self._heat[:, (rows - 15):rows] = np.minimum(
+        1.0, self._heat[:, (rows - 15):rows] + 0.6)
 
     # Phrase: rainbow explosion
     if audio.is_phrase:
       self._rainbow_timer = 1.5
-      for x in range(cols):
-        for yo in range(rows // 3):
-          y = rows - 1 - yo
-          if y >= 0:
-            self._heat[x][y] = 1.0
+      third = rows // 3
+      self._heat[:, (rows - third):rows] = 1.0
       for _ in range(40):
         if len(self._embers) < self._MAX_EMBERS:
           ex = random.uniform(0, cols - 1)
@@ -436,16 +438,14 @@ class BassFire(Effect):
     # Drop: everything goes white-hot
     if audio.drop:
       self._rainbow_timer = 2.5
-      for x in range(cols):
-        for y in range(rows):
-          self._heat[x][y] = min(1.0, self._heat[x][y] + 0.8)
+      self._heat = np.minimum(1.0, self._heat + 0.8)
 
     # ── Fire physics (from Fireplace) ─────────────────────────────
     fuel = clampf(bass)
     fuel_sq = fuel * fuel
     sz = max(3, int(self._SPARK_ZONE * (0.2 + fuel * 0.8)))
 
-    # Sparks
+    # Sparks (small loop — 10 cols × sz rows, stochastic so keep scalar)
     for x in range(cols):
       cw = 1.0 - abs(x - center) / (center + 0.5) * 0.25
       hotspot = (cyl_noise(x * 2, sim_t * 3, sim_t * 0.5, 1.0, 1.0) + 1) * 0.5
@@ -457,9 +457,9 @@ class BassFire(Effect):
         prob = self._spark_prob * fuel * cw * depth_factor * (0.5 + hotspot * 0.7)
         if random.random() < prob:
           intensity = random.uniform(self._SPARK_MIN, self._spark_max) * (0.3 + fuel * 0.7)
-          self._heat[x][y] = min(1.0, self._heat[x][y] + intensity * cw * dt)
+          self._heat[x, y] = min(1.0, self._heat[x, y] + intensity * cw * dt)
 
-    # Flares
+    # Flares (stochastic, small)
     if random.random() < self._flare_prob * fuel_sq:
       fc = random.randint(0, cols - 1)
       flare_height = int(random.randint(15, min(rows // 2, 60)) * (0.3 + fuel * 0.7))
@@ -469,67 +469,64 @@ class BassFire(Effect):
           y = rows - 1 - yo
           if y >= 0:
             fade = 1.0 - yo / flare_height
-            self._heat[fx][y] = min(1.0, self._heat[fx][y] + 0.6 * fade * dt)
+            self._heat[fx, y] = min(1.0, self._heat[fx, y] + 0.6 * fade * dt)
 
-    # Convection
-    new_heat = [[0.0] * rows for _ in range(cols)]
+    # Convection — VECTORIZED (the main bottleneck)
+    x_g = self._x_g
+    y_g = self._y_g
     turb_x = self._TURB_X_SCALE * (0.5 + fuel * 0.5)
     ty_bias = self._TURB_Y_BIAS * (0.3 + fuel * 0.7)
     ty_range = self._TURB_Y_RANGE * (0.3 + fuel * 0.7)
     buoy = self._BUOYANCY * (0.2 + fuel * 0.8)
     octs = max(1, int(self._NOISE_OCTAVES))
-    for x in range(cols):
-      for y in range(rows):
-        nx = cyl_fbm(x, y, sim_t * 8.0, octs, 0.5, 0.015)
-        ny = cyl_fbm(x + 5, y, sim_t * 7.0, octs, 0.5, 0.015)
-        lh = self._heat[x][y]
-        sx = x + nx * turb_x
-        sy = y + ty_bias + lh * buoy + abs(ny) * ty_range
-        sx = max(0.0, min(cols - 1.001, sx))
-        sy = max(0.0, min(rows - 1.001, sy))
-        ix = int(sx)
-        iy = int(sy)
-        ffx = sx - ix
-        ffy = sy - iy
-        ix2 = min(ix + 1, cols - 1)
-        iy2 = min(iy + 1, rows - 1)
-        new_heat[x][y] = (
-          self._heat[ix][iy] * (1 - ffx) * (1 - ffy)
-          + self._heat[ix2][iy] * ffx * (1 - ffy)
-          + self._heat[ix][iy2] * (1 - ffx) * ffy
-          + self._heat[ix2][iy2] * ffx * ffy
-        )
 
-    # Lateral diffusion
+    nx = cyl_fbm_xy(x_g, y_g, sim_t * 8.0, octs, 0.5, 0.015, cols)
+    ny = cyl_fbm_xy(x_g + 5, y_g, sim_t * 7.0, octs, 0.5, 0.015, cols)
+
+    sx = np.clip(x_g + nx * turb_x, 0, cols - 1.001)
+    sy = np.clip(y_g + ty_bias + self._heat * buoy + np.abs(ny) * ty_range,
+                 0, rows - 1.001)
+
+    ix = np.clip(sx.astype(np.int32), 0, cols - 2)
+    iy = np.clip(sy.astype(np.int32), 0, rows - 2)
+    ffx = sx - ix
+    ffy = sy - iy
+    ix2 = np.minimum(ix + 1, cols - 1)
+    iy2 = np.minimum(iy + 1, rows - 1)
+
+    new_heat = (
+      self._heat[ix, iy] * (1 - ffx) * (1 - ffy)
+      + self._heat[ix2, iy] * ffx * (1 - ffy)
+      + self._heat[ix, iy2] * (1 - ffx) * ffy
+      + self._heat[ix2, iy2] * ffx * ffy
+    )
+
+    # Lateral diffusion — VECTORIZED
     dc = self._DIFFUSE_CENTER
     ds = self._DIFFUSE_SIDE
-    for y in range(rows):
-      snap = [new_heat[x][y] for x in range(cols)]
-      for x in range(cols):
-        new_heat[x][y] = snap[x] * dc + snap[(x - 1) % cols] * ds + snap[(x + 1) % cols] * ds
+    new_heat = (new_heat * dc
+                + np.roll(new_heat, 1, axis=0) * ds
+                + np.roll(new_heat, -1, axis=0) * ds)
 
-    # Cooling
+    # Cooling — VECTORIZED
     fuel_cool = 1.5 - fuel
     cb = self._COOL_BASE * fuel_cool
     ch = self._COOL_HEIGHT * fuel_cool
     cn_amt = self._COOL_NOISE
-    for x in range(cols):
-      for y in range(rows):
-        hf = (rows - 1 - y) / float(rows)
-        cn = (cyl_noise(x, y, sim_t * 10.0, 0.8, 0.03) + 1) * 0.5
-        if hf < 0.5:
-          cool = (cb * 0.3 + cn * cn_amt * 0.15 + random.random() * 0.003) * dt
-        else:
-          top_frac = (hf - 0.5) * 2
-          cool = (
-            cb + top_frac * top_frac * ch
-            + cn * cn_amt * top_frac
-            + random.random() * 0.005
-          ) * dt
-        new_heat[x][y] = max(0.0, new_heat[x][y] - cool)
+
+    hf = (rows - 1 - y_g) / float(rows)
+    cn = (cyl_noise_xy(x_g, y_g, sim_t * 10.0, 0.8, 0.03, cols) + 1) * 0.5
+    rng = np.random.random((cols, rows))
+    top_frac = np.clip((hf - 0.5) * 2, 0, 1)
+    cool = np.where(
+      hf < 0.5,
+      (cb * 0.3 + cn * cn_amt * 0.15 + rng * 0.003) * dt,
+      (cb + top_frac ** 2 * ch + cn * cn_amt * top_frac + rng * 0.005) * dt
+    )
+    new_heat = np.maximum(0.0, new_heat - cool)
     self._heat = new_heat
 
-    # Ember bed
+    # Ember bed (10×12 = 120 ops — keep scalar with cyl_noise)
     for x in range(cols):
       for yo in range(12):
         y = rows - 1 - yo
@@ -537,14 +534,14 @@ class BassFire(Effect):
           break
         glow = 0.30 - yo * 0.02
         shimmer = (cyl_noise(x * 2 + 500, yo * 0.5, sim_t * 1.5, 1.0, 1.0) + 1) * 0.05
-        self._heat[x][y] = max(self._heat[x][y], glow + shimmer)
+        self._heat[x, y] = max(self._heat[x, y], glow + shimmer)
 
-    # Ember particles
+    # Ember particles (keep scalar — sparse particle loop)
     if self._EMBER_RATE > 0 and fuel > 0.1:
       real_rate = self._EMBER_RATE * (0.1 + fuel_sq * 0.9)
       for x in range(cols):
         for y in range(0, rows, 3):
-          h = self._heat[x][y]
+          h = self._heat[x, y]
           if 0.15 < h < 0.65 and random.random() < real_rate * h * dt_s * 1.5:
             burst = max(1, int(random.gauss(self._EMBER_BURST, self._EMBER_BURST * 0.5)))
             for _ in range(burst):
@@ -564,13 +561,10 @@ class BassFire(Effect):
         alive.append(e)
     self._embers = alive
 
-    # ── Render heat ─────────────────────────────────────────────
-    for x in range(cols):
-      for y in range(rows):
-        c = fire_color(self._heat[x][y])
-        self.buf.set_led(x, y, c[0], c[1], c[2])
+    # ── Render heat — VECTORIZED ──────────────────────────────────
+    self.buf.data = fire_color_grid(self._heat)
 
-    # ── Render embers ───────────────────────────────────────────
+    # ── Render embers (keep scalar — sparse particle loop) ────────
     for e in self._embers:
       ecol = int(round(e.x))
       erow = int(round(e.y))
@@ -584,26 +578,28 @@ class BassFire(Effect):
                          int(ec[1] * b * 1.1),
                          int(ec[2] * b * 0.4))
 
-    # ── Rainbow explosion overlay ───────────────────────────────
+    # ── Rainbow explosion overlay — VECTORIZED ────────────────────
     self._rainbow_timer = max(0, self._rainbow_timer - dt_s)
     if self._rainbow_timer > 0:
       intensity = min(1.0, self._rainbow_timer / 0.5)
       rt = self._rainbow_timer * 5
-      for x in range(cols):
-        for y in range(rows):
-          h = self._heat[x][y]
-          if h > 0.1:
-            hue = ((y / rows + x / cols * 0.3 + rt) % 1.0)
-            rc = hsv2rgb(int(hue * 255), 200, int(h * 255 * intensity))
-            # Blend rainbow over fire
-            blend = intensity * 0.7
-            cur = self.buf.data[x % cols, y]
-            self.buf.set_led(x, y,
-                             int(cur[0] * (1 - blend) + rc[0] * blend),
-                             int(cur[1] * (1 - blend) + rc[1] * blend),
-                             int(cur[2] * (1 - blend) + rc[2] * blend))
+      mask = self._heat > 0.1
+      hue = ((y_g / rows + x_g / cols * 0.3 + rt) % 1.0)
+      rc_rgb = pal_color_grid(0, hue)  # (cols, rows, 3) uint8
+      heat_bright = np.clip(self._heat * intensity, 0, 1)
+      rc_modulated = (rc_rgb.astype(np.float32) * heat_bright[..., np.newaxis]).clip(0, 255).astype(np.uint8)
+      blend = intensity * 0.7
+      blended = (
+        self.buf.data.astype(np.float32) * (1 - blend)
+        + rc_modulated.astype(np.float32) * blend
+      )
+      self.buf.data = np.where(
+        mask[..., np.newaxis],
+        blended.clip(0, 255).astype(np.uint8),
+        self.buf.data
+      )
 
-    # ── Downbeat color flash overlay ────────────────────────────
+    # ── Downbeat color flash overlay (10×5 = 50 ops — keep scalar) ──
     self._flash_bright *= 0.9
     if self._flash_bright > 0.05:
       fc = hsv2rgb(int(self._flash_hue * 255), 180, int(self._flash_bright * 255))
@@ -656,6 +652,10 @@ class SoundRipples(Effect):
     self._highs_prev = 0.0
     self._last_t = None
 
+    # Pre-compute coordinate grids for distance calculations
+    self._x_g = np.arange(width, dtype=np.float64)[:, np.newaxis]   # (cols, 1)
+    self._y_g = np.arange(height, dtype=np.float64)[np.newaxis, :]  # (1, rows)
+
   def render(self, t, state):
     dt_ms = self._calc_dt_ms(t)
     raw = state._audio_lock_free
@@ -705,6 +705,9 @@ class SoundRipples(Effect):
       self._ripples.append([cols / 2.0, rows * 0.7, 0.0,
         random.random(), 1.0, 6.0])
 
+    x_g = self._x_g  # (cols, 1)
+    y_g = self._y_g  # (1, rows)
+
     alive = []
     for r in self._ripples:
       # r = [cx, cy, radius, hue, intensity, ring_width]
@@ -713,24 +716,34 @@ class SoundRipples(Effect):
       if r[4] > 0.015 and r[2] < rows * 1.5:
         alive.append(r)
         rw = r[5]
-        for x in range(cols):
-          for y in range(rows):
-            # Cylinder-aware distance
-            dx = x - r[0]
-            if abs(dx) > cols / 2:
-              dx = dx - cols if dx > 0 else dx + cols
-            dx *= (rows / cols)  # aspect correction
-            dy = y - r[1]
-            dist = math.sqrt(dx * dx + dy * dy)
-            ring = abs(dist - r[2])
-            if ring < rw:
-              b = (1.0 - ring / rw) * r[4] * gain
-              if r[3] < 0:  # rainbow mode
-                hue = (dist * 0.02 + r[2] * 0.01) % 1.0
-                c = pal_color(0, hue)
-              else:
-                c = pal_color(pal_idx % NUM_PALETTES, r[3])
-              self.buf.add_led(x, y, int(c[0] * b), int(c[1] * b), int(c[2] * b))
+
+        # Vectorized distance computation
+        dx = x_g - r[0]  # (cols, 1)
+        dx = np.where(np.abs(dx) > cols / 2, dx - np.sign(dx) * cols, dx)
+        dx = dx * (rows / cols)  # aspect correction
+        dy = y_g - r[1]  # (1, rows)
+        dist = np.sqrt(dx ** 2 + dy ** 2)  # (cols, rows)
+
+        ring = np.abs(dist - r[2])
+        mask = ring < rw
+        if not np.any(mask):
+          continue
+
+        b = (1.0 - ring / rw) * r[4] * gain  # (cols, rows)
+
+        if r[3] < 0:  # rainbow mode
+          hue = (dist * 0.02 + r[2] * 0.01) % 1.0
+          c_grid = pal_color_grid(0, hue)
+        else:
+          hue_fill = np.full((cols, rows), r[3])
+          c_grid = pal_color_grid(pal_idx % NUM_PALETTES, hue_fill)
+
+        add_rgb = (c_grid.astype(np.float32) * np.clip(b, 0, None)[..., np.newaxis]).clip(0, 255)
+        self.buf.data[mask] = np.clip(
+          self.buf.data[mask].astype(np.float32) + add_rgb[mask],
+          0, 255
+        ).astype(np.uint8)
+
     self._ripples = alive
 
     return self.buf.get_frame()
@@ -800,15 +813,28 @@ class Spectrogram(Effect):
           row[i] = clampf(audio.bands[i] * adjusted_gain)
       self._grid.append(row)
 
-    for y in range(rows):
-      for x in range(cols):
-        v = self._grid[y][x]
-        if self._drop_flash > 0.1 and v > 0.8:
-          c = pal_color(0, (y / rows) % 1.0)
-        else:
-          c = pal_color(pal_idx % NUM_PALETTES, v)
-        b = v
-        self.buf.set_led(x, y, int(c[0] * b), int(c[1] * b), int(c[2] * b))
+    # Vectorized render: convert grid to numpy, palette lookup, brightness
+    grid_arr = np.array(self._grid, dtype=np.float64)  # (rows, cols)
+    grid_t = grid_arr.T  # (cols, rows) — matches buf.data shape
+
+    if self._drop_flash > 0.1:
+      flash_mask = grid_t > 0.8
+      # Normal palette lookup
+      rgb = pal_color_grid(pal_idx % NUM_PALETTES, grid_t)
+      # Rainbow for high values during drop
+      y_frac = np.broadcast_to(
+        np.arange(rows, dtype=np.float64)[np.newaxis, :] / rows,
+        (cols, rows)
+      )
+      flash_rgb = pal_color_grid(0, y_frac)
+      rgb = np.where(flash_mask[..., np.newaxis], flash_rgb, rgb)
+    else:
+      rgb = pal_color_grid(pal_idx % NUM_PALETTES, grid_t)
+
+    # brightness = value
+    self.buf.data = (
+      rgb.astype(np.float32) * grid_t[..., np.newaxis]
+    ).clip(0, 255).astype(np.uint8)
 
     return self.buf.get_frame()
 
@@ -873,23 +899,33 @@ class SoundWorm(Effect):
       self._drop_split = 2.0
     self._drop_split *= 0.97
 
+    y_arr = np.arange(rows, dtype=np.float64)
+    y_idx = np.arange(rows)
+
     # During drop: split into multiple worms with rainbow
     num_worms = 1 + int(self._drop_split * 2)
     for worm in range(num_worms):
       phase_offset = worm * 6.28 / max(1, num_worms)
-      for y in range(rows):
-        amp = (vol + buildup * 0.5 + self._drop_split * 0.3) * gain * (cols / 2)
-        wave_x = cols / 2 + math.sin(y * 0.03 + self._t * 3 + phase_offset) * amp
-        for dx in range(-w, w + 1):
-          px = int(round(wave_x)) + dx
-          fade = 1.0 - abs(dx) / (w + 1)
-          if self._drop_split > 0.5:
-            hue = (y / rows + worm / num_worms + self._t * 0.3) % 1.0
-            c = pal_color(0, hue)
-          else:
-            hue = (y / rows + self._t * 0.1) % 1.0
-            c = pal_color(pal_idx % NUM_PALETTES, hue)
-          self.buf.add_led(px, y, int(c[0] * fade), int(c[1] * fade), int(c[2] * fade))
+      amp = (vol + buildup * 0.5 + self._drop_split * 0.3) * gain * (cols / 2)
+      wave_x = cols / 2 + np.sin(y_arr * 0.03 + self._t * 3 + phase_offset) * amp
+
+      # Palette lookup (vectorized per row)
+      if self._drop_split > 0.5:
+        hue_arr = (y_arr / rows + worm / num_worms + self._t * 0.3) % 1.0
+        c_arr = pal_color_grid(0, hue_arr)  # (rows, 3)
+      else:
+        hue_arr = (y_arr / rows + self._t * 0.1) % 1.0
+        c_arr = pal_color_grid(pal_idx % NUM_PALETTES, hue_arr)  # (rows, 3)
+
+      for dx in range(-w, w + 1):
+        fade_val = 1.0 - abs(dx) / (w + 1)
+        px_arr = (np.round(wave_x) + dx).astype(np.int32) % cols  # (rows,)
+        add_vals = (c_arr.astype(np.float32) * fade_val).clip(0, 255).astype(np.int16)
+        # Fancy indexing: px_arr[y] and y_idx[y] both shape (rows,)
+        self.buf.data[px_arr, y_idx] = np.clip(
+          self.buf.data[px_arr, y_idx].astype(np.int16) + add_vals,
+          0, 255
+        ).astype(np.uint8)
 
     return self.buf.get_frame()
 
@@ -1067,18 +1103,27 @@ class SoundPlasma(Effect):
       scale *= 0.3
       local_vol *= 0.2
 
-    for x in range(cols):
-      ax = x / cols * 6.2832
-      for y in range(rows):
-        v = (math.sin(ax * 2 * scale + tt * 1.5) +
-             math.sin(y * scale * 0.035 + tt * 0.8) +
-             math.sin(ax * 3 + y * 0.02 * scale + tt * 1.2)) / 3.0
-        bright = clampf((v + 1) * 0.5 * (0.4 + local_vol * 0.8))
-        if self._drop_boost > 0.5:  # rainbow during drop
-          c = pal_color(0, ((v + 1) * 0.5 + tt * 0.2) % 1.0)
-        else:
-          c = pal_color(pal_idx % NUM_PALETTES, (v + 1) * 0.5)
-        self.buf.set_led(x, y, int(c[0] * bright), int(c[1] * bright), int(c[2] * bright))
+    # Vectorized plasma computation
+    x_g = np.arange(cols, dtype=np.float64)[:, np.newaxis]  # (cols, 1)
+    y_g = np.arange(rows, dtype=np.float64)[np.newaxis, :]  # (1, rows)
+    ax = x_g / cols * 6.2832  # (cols, 1)
+
+    v = (np.sin(ax * 2 * scale + tt * 1.5)
+         + np.sin(y_g * scale * 0.035 + tt * 0.8)
+         + np.sin(ax * 3 + y_g * 0.02 * scale + tt * 1.2)) / 3.0
+
+    bright = np.clip((v + 1) * 0.5 * (0.4 + local_vol * 0.8), 0, 1)
+    hue = (v + 1) * 0.5
+
+    if self._drop_boost > 0.5:
+      hue = (hue + tt * 0.2) % 1.0
+      rgb = pal_color_grid(0, hue)
+    else:
+      rgb = pal_color_grid(pal_idx % NUM_PALETTES, hue)
+
+    self.buf.data = (
+      rgb.astype(np.float32) * bright[..., np.newaxis]
+    ).clip(0, 255).astype(np.uint8)
 
     return self.buf.get_frame()
 
@@ -1144,18 +1189,14 @@ class StrobeChaos(Effect):
         hue = (frame * 0.07) % 1.0
         c = pal_color(0, hue)
         b = min(1.0, self._drop_strobe / 1.5)
-        for x in range(cols):
-          for y in range(rows):
-            self.buf.set_led(x, y, int(c[0] * b), int(c[1] * b), int(c[2] * b))
+        self.buf.data[:] = [int(c[0] * b), int(c[1] * b), int(c[2] * b)]
       return self.buf.get_frame()
 
     # Breakdown: dark with occasional dim flicker
     if audio.breakdown:
       if random.random() < 0.05:
         c = pal_color(pal_idx % NUM_PALETTES, random.random())
-        for x in range(cols):
-          for y in range(rows):
-            self.buf.set_led(x, y, int(c[0] * 0.08), int(c[1] * 0.08), int(c[2] * 0.08))
+        self.buf.data[:] = [int(c[0] * 0.08), int(c[1] * 0.08), int(c[2] * 0.08)]
       return self.buf.get_frame()
 
     if audio.beat:
@@ -1172,9 +1213,7 @@ class StrobeChaos(Effect):
           y0 = seg * seg_h
           y1 = min(y0 + seg_h, rows)
           b = self._flash * random.uniform(0.5, 1.0)
-          for x in range(cols):
-            for y in range(y0, y1):
-              self.buf.set_led(x, y, int(c[0] * b), int(c[1] * b), int(c[2] * b))
+          self.buf.data[:, y0:y1] = [int(c[0] * b), int(c[1] * b), int(c[2] * b)]
 
     return self.buf.get_frame()
 
