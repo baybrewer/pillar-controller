@@ -11,12 +11,6 @@
 </head>
 <body>
   <div id="app">
-    <!-- Auth banner (shown when no token set) -->
-    <div id="auth-banner" class="hidden">
-      <input type="password" id="auth-token-input" placeholder="Enter auth token">
-      <button id="auth-save-btn" class="action-btn">Save</button>
-    </div>
-
     <!-- Status bar -->
     <header id="status-bar">
       <div class="status-left">
@@ -81,26 +75,29 @@
 
       <!-- EFFECTS -->
       <section id="panel-effects" class="panel" role="tabpanel" aria-labelledby="tab-effects">
-        <div class="help-panel collapsed" data-tab="effects">
-          <button class="help-toggle" aria-expanded="false">
-            <span class="help-icon">?</span> How to use this page
-          </button>
-          <div class="help-content" hidden>
-            <p>Choose an animation for your LED pillar.</p>
-            <p>Tap any effect to activate it immediately on the live LEDs. Effects are grouped: Classic, Ambient, Sound-Reactive, and Built-in.</p>
-            <p>Sound-Reactive effects respond to music via the microphone (configure in Audio tab).</p>
-            <p>When an effect is active, controls appear below: speed slider adjusts animation speed, palette dropdown changes the color scheme, and other parameters vary per effect.</p>
-            <p>Animation Switcher: select multiple effects and the pillar will automatically cycle between them with smooth cross-fade transitions.</p>
+        <div class="effects-layout">
+          <!-- Left side: category filters + effect grid + controls -->
+          <div class="effects-main">
+            <!-- Category filter buttons (horizontal row) -->
+            <div id="effects-filter-bar"></div>
+            <!-- Effect buttons (filtered by selected category) -->
+            <div id="effects-grid" class="button-grid"></div>
+            <!-- Controls for active effect (speed + palette always visible) -->
+            <div id="active-effect-controls" class="hidden">
+              <div class="active-effect-header">
+                <span id="active-effect-name"></span>
+              </div>
+              <div id="effect-params"></div>
+              <div id="effect-palette-wrap" class="hidden">
+                <label>Palette <select id="effect-palette-select"></select></label>
+              </div>
+            </div>
           </div>
-        </div>
-        <div id="effects-categories"></div>
-        <div id="active-effect-controls" class="hidden">
-          <div class="active-effect-header">
-            <span id="active-effect-name"></span>
-          </div>
-          <div id="effect-params"></div>
-          <div id="effect-palette-wrap" class="hidden">
-            <label>Palette <select id="effect-palette-select"></select></label>
+          <!-- Right side: live simulation preview -->
+          <div class="effects-preview">
+            <div id="effects-sim-canvas-wrap" class="sim-canvas-wrap fit-mode">
+              <canvas id="effects-sim-canvas" width="86" height="1382"></canvas>
+            </div>
           </div>
         </div>
       </section>

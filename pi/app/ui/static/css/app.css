@@ -400,32 +400,6 @@ select {
   margin-left: 8px;
 }
 
-/* Auth banner */
-#auth-banner {
-  padding: 12px 16px;
-  background: var(--danger);
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-#auth-banner input {
-  flex: 1;
-  padding: 8px;
-  border: 1px solid rgba(255,255,255,0.3);
-  border-radius: 6px;
-  background: rgba(0,0,0,0.2);
-  color: white;
-  font-size: 14px;
-}
-
-#auth-banner .action-btn {
-  flex: 0 0 auto;
-  width: auto;
-  padding: 8px 16px;
-  margin: 0;
-}
-
 /* Brightness auto */
 .brightness-auto {
   display: flex;
@@ -498,28 +472,57 @@ select {
   margin-top: 8px;
 }
 
-/* Effects tab — categories and controls */
-.effect-category {
-  margin-bottom: 8px;
+/* Effects page layout — side-by-side on desktop, stacked on mobile */
+.effects-layout {
+  display: flex;
+  gap: 16px;
 }
 
-.category-header {
-  display: block;
+.effects-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.effects-preview {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.effects-preview .sim-canvas-wrap {
+  position: sticky;
+  top: 0;
+}
+
+.effects-preview canvas {
   width: 100%;
-  padding: 8px 12px;
+  height: auto;
+  max-height: calc(100dvh - 200px);
+  image-rendering: pixelated;
+}
+
+/* Category filter bar */
+#effects-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.filter-btn {
+  padding: 6px 12px;
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
+  border-radius: 16px;
+  color: var(--text-dim);
+  font-size: 13px;
   cursor: pointer;
-  text-align: left;
-  margin-bottom: 4px;
+  white-space: nowrap;
 }
 
-.category-header.collapsed + .button-grid {
-  display: none;
+.filter-btn.filter-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 .active-effect-header {
@@ -872,6 +875,18 @@ input:focus-visible {
 
 #setup-validation-msg.has-errors {
   color: var(--danger);
+}
+
+/* On small screens, hide preview and stack everything */
+@media (max-width: 479px) {
+  .effects-layout {
+    flex-direction: column;
+  }
+  .effects-preview {
+    width: 100%;
+    max-height: 200px;
+    order: -1; /* Preview on top on mobile */
+  }
 }
 
 /* Responsive */

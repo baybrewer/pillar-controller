@@ -95,7 +95,7 @@ async function api(method, path, body) {
   try {
     const res = await fetch(`${API}${path}`, opts);
     if (res.status === 401) {
-      showAuthBanner();
+      console.warn('Auth required — set token in System > Admin');
       return null;
     }
     if (res.status === 204 || res.headers.get('content-length') === '0') {
@@ -113,13 +113,16 @@ async function api(method, path, body) {
   }
 }
 
-function showAuthBanner() {
-  document.getElementById('auth-banner').classList.remove('hidden');
-}
-
 // --- Tab navigation ---
 
+let activePreviewCanvas = 'sim-canvas';
+let activeEffectName = null;
+
 function activateTab(tab) {
+  // Detect previous tab
+  const prevTab = document.querySelector('.tab.active');
+  const prevTabName = prevTab ? prevTab.dataset.tab : null;
+
   const tabs = Array.from(document.querySelectorAll('.tab'));
   tabs.forEach(t => {
     t.classList.remove('active');
@@ -133,12 +136,37 @@ function activateTab(tab) {
   tab.focus();
   document.getElementById(`panel-${tab.dataset.tab}`).classList.add('active');
 
-  if (tab.dataset.tab === 'effects') loadEffects();
+  // Stop effects preview when leaving effects tab
+  if (prevTabName === 'effects' && tab.dataset.tab !== 'effects') {
+    stopEffectsPreview();
+  }
+
+  if (tab.dataset.tab === 'effects') {
+    activePreviewCanvas = 'effects-sim-canvas';
+    loadEffects();
+  } else if (tab.dataset.tab === 'sim') {
+    activePreviewCanvas = 'sim-canvas';
+    loadSimEffects();
+  } else {
+    activePreviewCanvas = 'sim-canvas';
+  }
+
   if (tab.dataset.tab === 'media') loadMedia();
   if (tab.dataset.tab === 'audio') loadAudioDevices();
   if (tab.dataset.tab === 'diag') loadStats();
-  if (tab.dataset.tab === 'sim') loadSimEffects();
   if (tab.dataset.tab === 'system') loadSystemStatus();
+}
+
+async function stopEffectsPreview() {
+  await api('POST', '/api/preview/stop');
+  if (previewWs) { previewWs.close(); previewWs = null; }
+}
+
+async function startEffectsPreview(effectName, params) {
+  const data = await api('POST', '/api/preview/start', { effect: effectName, params: params || {}, fps: 30 });
+  if (data && data.active) {
+    connectPreviewWs();
+  }
 }
 
 function initTabs() {
@@ -170,70 +198,98 @@ function initTabs() {
 
 let effectsCatalog = null;
 let currentEffectParams = {};
+let currentFilterCategory = 'All';
+
+const CATEGORY_MAP = {
+  imported_sound: 'Sound Reactive',
+  sound: 'Sound Reactive',
+  audio: 'Sound Reactive',
+  classic: 'Classic',
+  imported_classic: 'Classic',
+  ambient: 'Ambient',
+  imported_ambient: 'Ambient',
+  generative: 'Built-in',
+  special: 'Special',
+};
+
+const DEFAULT_PALETTES = ['Rainbow', 'Ocean', 'Sunset', 'Forest', 'Lava', 'Ice', 'Neon', 'Cyberpunk', 'Pastel', 'Vapor'];
+
+function effectCategory(group) {
+  return CATEGORY_MAP[group] || 'Other';
+}
 
 async function loadEffects() {
   const data = await api('GET', '/api/effects/catalog');
   if (!data) return;
   effectsCatalog = data.effects;
 
-  // Group effects by category
-  const groups = {};
+  // Build categorized list
+  const categorized = [];
   for (const [name, info] of Object.entries(data.effects)) {
     if (name.startsWith('diag_')) continue;
-    const group = info.group || 'other';
-    if (!groups[group]) groups[group] = [];
-    groups[group].push({ name, ...info });
+    const cat = effectCategory(info.group || 'other');
+    categorized.push({ name, category: cat, ...info });
   }
 
-  // Render category order
-  const order = ['classic', 'ambient', 'imported_classic', 'imported_ambient', 'generative', 'audio', 'imported_sound', 'sound', 'special', 'other'];
-  const labels = {
-    classic: 'Classic', ambient: 'Ambient', imported_classic: 'Classic',
-    imported_ambient: 'Ambient', generative: 'Built-in', audio: 'Audio-Reactive',
-    imported_sound: 'Sound-Reactive', sound: 'Sound-Reactive',
-    special: 'Special', other: 'Other',
-  };
-
-  const container = document.getElementById('effects-categories');
-  container.innerHTML = '';
-
-  // Merge groups with same label
-  const merged = {};
-  for (const key of order) {
-    if (!groups[key]) continue;
-    const label = labels[key] || key;
-    if (!merged[label]) merged[label] = [];
-    merged[label].push(...groups[key]);
+  // Count per category
+  const counts = {};
+  for (const eff of categorized) {
+    counts[eff.category] = (counts[eff.category] || 0) + 1;
   }
 
-  for (const [label, effects] of Object.entries(merged)) {
-    const section = document.createElement('div');
-    section.className = 'effect-category';
-    const header = document.createElement('button');
-    header.className = 'category-header';
-    header.textContent = `${label} (${effects.length})`;
-    header.addEventListener('click', () => {
-      grid.classList.toggle('hidden');
-      header.classList.toggle('collapsed');
+  // Render filter bar
+  const filterBar = document.getElementById('effects-filter-bar');
+  filterBar.innerHTML = '';
+
+  const categoryOrder = ['All', 'Classic', 'Ambient', 'Sound Reactive', 'Built-in', 'Special', 'Other'];
+  for (const cat of categoryOrder) {
+    if (cat !== 'All' && !counts[cat]) continue;
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (cat === currentFilterCategory ? ' filter-active' : '');
+    btn.textContent = cat === 'All' ? `All (${categorized.length})` : `${cat} (${counts[cat]})`;
+    btn.addEventListener('click', () => {
+      currentFilterCategory = cat;
+      // Update active state on filter buttons
+      filterBar.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('filter-active'));
+      btn.classList.add('filter-active');
+      // Filter grid
+      applyEffectsFilter();
     });
-    const grid = document.createElement('div');
-    grid.className = 'button-grid';
-    for (const eff of effects) {
-      const btn = document.createElement('button');
-      btn.textContent = eff.label || eff.name.replace(/_/g, ' ');
-      if (eff.name === data.current) btn.classList.add('active-scene');
-      btn.addEventListener('click', () => activateEffect(eff.name));
-      grid.appendChild(btn);
-    }
-    section.appendChild(header);
-    section.appendChild(grid);
-    container.appendChild(section);
+    filterBar.appendChild(btn);
   }
 
-  // Show controls for active effect
-  if (data.current && data.effects[data.current]) {
-    showEffectControls(data.current, data.effects[data.current]);
+  // Render effects grid
+  const grid = document.getElementById('effects-grid');
+  grid.innerHTML = '';
+
+  for (const eff of categorized) {
+    const btn = document.createElement('button');
+    btn.textContent = eff.label || eff.name.replace(/_/g, ' ');
+    btn.dataset.category = eff.category;
+    if (eff.name === data.current) btn.classList.add('active-scene');
+    btn.addEventListener('click', () => activateEffect(eff.name));
+    grid.appendChild(btn);
   }
+
+  applyEffectsFilter();
+
+  // Show controls for active effect and start preview
+  if (data.current && data.effects[data.current]) {
+    activeEffectName = data.current;
+    showEffectControls(data.current, data.effects[data.current]);
+    startEffectsPreview(data.current, currentEffectParams);
+  }
+}
+
+function applyEffectsFilter() {
+  const grid = document.getElementById('effects-grid');
+  grid.querySelectorAll('button').forEach(btn => {
+    if (currentFilterCategory === 'All' || btn.dataset.category === currentFilterCategory) {
+      btn.style.display = '';
+    } else {
+      btn.style.display = 'none';
+    }
+  });
 }
 
 function showEffectControls(name, meta) {
@@ -242,69 +298,95 @@ function showEffectControls(name, meta) {
   const paramsDiv = document.getElementById('effect-params');
   paramsDiv.innerHTML = '';
 
-  // Render param sliders
-  if (meta.params && meta.params.length > 0) {
-    for (const p of meta.params) {
-      const row = document.createElement('div');
-      row.className = 'param-row';
-      const val = currentEffectParams[p.name] ?? p.default;
-      row.innerHTML = `
-        <label>${p.label}</label>
-        <input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
-               data-param="${p.name}" class="param-slider">
-        <span class="param-value">${val}</span>
-      `;
-      const slider = row.querySelector('input');
-      const display = row.querySelector('.param-value');
-      let debounce = null;
-      slider.addEventListener('input', () => {
-        const v = parseFloat(slider.value);
-        display.textContent = Number.isInteger(p.step) ? v : v.toFixed(1);
-        currentEffectParams[p.name] = v;
-        clearTimeout(debounce);
-        debounce = setTimeout(() => {
-          api('POST', '/api/scenes/activate', { effect: name, params: currentEffectParams });
-        }, 100);
-      });
-      paramsDiv.appendChild(row);
-    }
+  // Build params list, ensuring speed is always present
+  const params = meta.params ? [...meta.params] : [];
+  const hasSpeed = params.some(p => p.name === 'speed');
+  if (!hasSpeed) {
+    params.unshift({
+      name: 'speed',
+      label: 'Speed',
+      min: 0.1,
+      max: 5.0,
+      step: 0.1,
+      default: 1.0,
+    });
   }
 
-  // Palette selector
-  const palWrap = document.getElementById('effect-palette-wrap');
-  if (meta.palettes && meta.palettes.length > 0) {
-    palWrap.classList.remove('hidden');
-    const select = document.getElementById('effect-palette-select');
-    select.innerHTML = '';
-    meta.palettes.forEach((palName, idx) => {
-      const opt = document.createElement('option');
-      opt.value = idx;  // numeric index, not name — effects expect integer
-      opt.textContent = palName;
-      select.appendChild(opt);
+  // Render param sliders
+  for (const p of params) {
+    const row = document.createElement('div');
+    row.className = 'param-row';
+    const val = currentEffectParams[p.name] ?? p.default;
+    row.innerHTML = `
+      <label>${p.label}</label>
+      <input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+             data-param="${p.name}" class="param-slider">
+      <span class="param-value">${Number.isInteger(p.step) ? val : parseFloat(val).toFixed(1)}</span>
+    `;
+    const slider = row.querySelector('input');
+    const display = row.querySelector('.param-value');
+    let debounce = null;
+    slider.addEventListener('input', () => {
+      const v = parseFloat(slider.value);
+      display.textContent = Number.isInteger(p.step) ? v : v.toFixed(1);
+      currentEffectParams[p.name] = v;
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        api('POST', '/api/scenes/activate', { effect: name, params: currentEffectParams });
+        // Update preview with new params
+        if (activeEffectName === name) {
+          startEffectsPreview(name, currentEffectParams);
+        }
+      }, 100);
     });
-    select.onchange = () => {
-      currentEffectParams.palette = parseInt(select.value);
-      api('POST', '/api/scenes/activate', { effect: name, params: currentEffectParams });
-    };
-  } else {
-    palWrap.classList.add('hidden');
+    paramsDiv.appendChild(row);
   }
+
+  // Palette selector — always shown
+  const palWrap = document.getElementById('effect-palette-wrap');
+  palWrap.classList.remove('hidden');
+  const select = document.getElementById('effect-palette-select');
+  select.innerHTML = '';
+  const paletteList = (meta.palettes && meta.palettes.length > 0) ? meta.palettes : DEFAULT_PALETTES;
+  paletteList.forEach((palName, idx) => {
+    const opt = document.createElement('option');
+    opt.value = idx;
+    opt.textContent = palName;
+    if (currentEffectParams.palette === idx) opt.selected = true;
+    select.appendChild(opt);
+  });
+  select.onchange = () => {
+    currentEffectParams.palette = parseInt(select.value);
+    api('POST', '/api/scenes/activate', { effect: name, params: currentEffectParams });
+    if (activeEffectName === name) {
+      startEffectsPreview(name, currentEffectParams);
+    }
+  };
 
   wrap.classList.remove('hidden');
 }
 
 async function activateEffect(name) {
   currentEffectParams = {};
+  activeEffectName = name;
   await api('POST', '/api/scenes/activate', { effect: name, params: {} });
   // Re-render to update active highlight and controls without full refetch
   if (effectsCatalog && effectsCatalog[name]) {
-    // Update highlights
-    document.querySelectorAll('.button-grid button').forEach(b => b.classList.remove('active-scene'));
-    document.querySelectorAll('.button-grid button').forEach(b => {
-      const label = effectsCatalog[name]?.label || name.replace(/_/g, ' ');
-      if (b.textContent === label) b.classList.add('active-scene');
-    });
+    // Update highlights in effects grid
+    const grid = document.getElementById('effects-grid');
+    if (grid) {
+      grid.querySelectorAll('button').forEach(b => b.classList.remove('active-scene'));
+      grid.querySelectorAll('button').forEach(b => {
+        const label = effectsCatalog[name]?.label || name.replace(/_/g, ' ');
+        if (b.textContent === label) b.classList.add('active-scene');
+      });
+    }
     showEffectControls(name, effectsCatalog[name]);
+    // Start live preview on effects tab
+    const activeTab = document.querySelector('.tab.active');
+    if (activeTab && activeTab.dataset.tab === 'effects') {
+      startEffectsPreview(name, currentEffectParams);
+    }
   }
 }
 
@@ -368,7 +450,7 @@ function initUpload() {
       });
 
       if (res.status === 401) {
-        showAuthBanner();
+        console.warn('Auth required — set token in System > Admin');
       } else if (res.status === 413) {
         alert('File too large');
       } else if (res.ok) {
@@ -781,20 +863,6 @@ function initBlackout() {
 // --- Auth ---
 
 function initAuth() {
-  // Restore token if saved
-  const saved = getToken();
-  if (!saved) {
-    showAuthBanner();
-  }
-
-  document.getElementById('auth-save-btn').addEventListener('click', () => {
-    const token = document.getElementById('auth-token-input').value.trim();
-    if (token) {
-      setToken(token);
-      document.getElementById('auth-banner').classList.add('hidden');
-    }
-  });
-
   document.getElementById('system-token-save').addEventListener('click', () => {
     const token = document.getElementById('system-token-input').value.trim();
     if (token) {
@@ -814,6 +882,7 @@ function initSim() {
   document.getElementById('sim-start-btn').addEventListener('click', async () => {
     const effect = effectSelect.value;
     if (!effect) return;
+    activePreviewCanvas = 'sim-canvas';
     const data = await api('POST', '/api/preview/start', { effect, params: {}, fps: 30 });
     if (data && data.active) {
       document.getElementById('sim-status').textContent = `Previewing: ${effect}`;
@@ -915,7 +984,8 @@ function renderPreviewFrame(buffer) {
   const headerSize = 10;
   const pixels = new Uint8Array(buffer, headerSize);
 
-  const canvas = document.getElementById('sim-canvas');
+  const canvas = document.getElementById(activePreviewCanvas);
+  if (!canvas) return;
   const pixelSize = 6;
   const gap = 2;
   const pitch = pixelSize + gap;
