@@ -64,7 +64,7 @@ class TestSessionLifecycle:
     snapshot = svc.cancel()
     assert snapshot.current_scene == "rainbow_rotate"
     assert svc.render_state.blackout is False
-    svc.renderer.activate_scene.assert_called_with("rainbow_rotate", {"speed": 1.0})
+    svc.renderer.activate_scene.assert_called_with("rainbow_rotate", {"speed": 1.0}, media_manager=None)
     assert svc.get_session() is None
 
   def test_cancel_without_session_raises(self, tmp_path):

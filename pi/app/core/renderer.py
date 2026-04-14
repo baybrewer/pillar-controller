@@ -13,6 +13,7 @@ import numpy as np
 
 from ..mapping.cylinder import map_frame_fast, serialize_channels, downsample_width, N
 from ..mapping.runtime_mapper import map_frame_compiled, serialize_channels_compiled
+from ..hardware_constants import CHANNELS, LEDS_PER_CHANNEL
 from ..transport.usb import TeensyTransport
 from .brightness import BrightnessEngine
 
@@ -205,9 +206,9 @@ class Renderer:
     from datetime import datetime, timezone
 
     plan = self._output_plan
-    # Use plan dimensions when available, fall back to legacy constants
-    ch = plan.channels if plan else 5
-    lpc = plan.leds_per_channel if plan else 344
+    # Use plan dimensions when available, fall back to hardware constants
+    ch = plan.channels if plan else CHANNELS
+    lpc = plan.leds_per_channel if plan else LEDS_PER_CHANNEL
 
     if self.state.blackout:
       channel_data = np.zeros((ch, lpc, 3), dtype=np.uint8)

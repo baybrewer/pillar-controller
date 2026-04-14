@@ -44,13 +44,14 @@ class SetupSessionService:
   """Manages the lifecycle of setup sessions."""
 
   def __init__(self, installation: InstallationConfig, controller: ControllerProfile,
-               config_dir, renderer, render_state, state_manager):
+               config_dir, renderer, render_state, state_manager, media_manager=None):
     self.installation = installation
     self.controller = controller
     self.config_dir = config_dir
     self.renderer = renderer
     self.render_state = render_state
     self.state_manager = state_manager
+    self.media_manager = media_manager
     self._session: Optional[SetupSession] = None
 
   @property
@@ -125,19 +126,29 @@ class SetupSessionService:
 
     snapshot = self._session.snapshot
     self._session = None
+    self._restore_snapshot(snapshot)
+    logger.info("Setup session cancelled — live context restored")
+    return snapshot
 
-    # Restore live context
+  def _restore_snapshot(self, snapshot: SetupSnapshot):
+    """Restore the live context from a snapshot. Handles media scenes and blank state."""
     self.render_state.blackout = snapshot.blackout
     if snapshot.current_scene:
       self.renderer.activate_scene(
         snapshot.current_scene,
         snapshot.current_params,
+        media_manager=self.media_manager,
       )
-    logger.info("Setup session cancelled — live context restored")
-    return snapshot
+    else:
+      # No prior scene — clear any setup pattern effect
+      self.renderer.current_effect = None
+      self.render_state.current_scene = None
 
   def commit(self, broadcast_state=None) -> dict:
-    """Validate staged installation, persist, compile, and hot-apply."""
+    """Validate staged installation, compile, persist, and hot-apply.
+
+    Compile BEFORE persist so a compilation failure doesn't leave disk dirty.
+    """
     if self._session is None:
       raise ValueError("No active setup session")
 
@@ -146,24 +157,18 @@ class SetupSessionService:
     if errors:
       raise ValueError(f"Staged installation invalid: {'; '.join(errors)}")
 
-    # Save atomically
+    # Compile first — fail before touching disk
+    new_plan = compile_output_plan(staged, self.controller)
+
+    # Persist atomically (only after compile succeeds)
     save_installation(staged, self.config_dir)
 
-    # Update live installation
+    # Update live installation and hot-swap plan
     self.installation.__dict__.update(staged.__dict__)
-
-    # Compile new runtime plan and hot-swap into renderer
-    new_plan = compile_output_plan(staged, self.controller)
     self.renderer.apply_output_plan(new_plan)
 
     # Restore live context from snapshot
-    snapshot = self._session.snapshot
-    self.render_state.blackout = snapshot.blackout
-    if snapshot.current_scene:
-      self.renderer.activate_scene(
-        snapshot.current_scene,
-        snapshot.current_params,
-      )
+    self._restore_snapshot(self._session.snapshot)
 
     self._session = None
     logger.info("Setup session committed — installation saved and plan recompiled")

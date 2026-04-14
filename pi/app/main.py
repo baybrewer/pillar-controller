@@ -151,6 +151,7 @@ def main():
     renderer=renderer,
     render_state=render_state,
     state_manager=state_manager,
+    media_manager=media_manager,
   )
 
   # Preview service
