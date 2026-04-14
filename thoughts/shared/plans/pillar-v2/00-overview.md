@@ -191,13 +191,20 @@ renderer's normal output. Instead of adding separate mutable fields, use a
 single unified override:
 
 ```python
+# Lives in pi/app/core/renderer.py alongside Renderer class
+@dataclass
 class RenderOverride:
-    mode: str  # "normal", "calibration", "preview"
-    # calibration fields (F4/F5)
-    # preview fields (F6)
+    mode: str = "normal"  # "normal" | "calibration" | "preview"
+    # calibration fields (F4/F5):
+    led_spec: Optional[SetLedsRequest] = None
+    # preview fields (F6):
+    preview_effect: Optional[Effect] = None
+    preview_start: float = 0.0
+    preview_timeout: float = 10.0
 ```
 
 This keeps the Renderer's state clean (SRP) and prevents conflicting overrides.
+Placed in `renderer.py` to avoid circular imports (no new module needed).
 
 ### 7. Effect registration pattern (unchanged)
 

@@ -286,8 +286,11 @@ function inferColorOrder(observations) {
 ```
 
 **NOTE**: The ORDER_MAP must be validated empirically with real hardware.
-Include a manual confirmation step where the user verifies what color they
-see before trusting camera-only detection.
+The detection flow always ends with a **results table where the user confirms
+or overrides** each strip's detected order before applying. If the camera
+detection fails or is ambiguous for any strip, that strip's row shows
+"Manual" with a dropdown pre-set to the current config value. The user is
+never auto-committed — the Apply button requires explicit confirmation.
 
 ---
 

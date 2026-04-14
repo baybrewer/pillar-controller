@@ -96,7 +96,8 @@ if self.frame_callback and logical_frame is not None:
     self.frame_callback(logical_frame, self.state.frames_rendered)
 ```
 
-The server registers this callback to distribute to frame subscribers:
+The server registers this callback **in `ws.py`'s `create_router()`**, where
+the `frame_subscribers` dict lives:
 
 ```python
 import struct

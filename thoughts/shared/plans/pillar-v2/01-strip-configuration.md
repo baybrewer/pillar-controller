@@ -286,17 +286,25 @@ derived but must be verified with a test that simulates the full pipeline:
 ```python
 def test_color_permutation(strip_order):
     """For each strip order, verify RGB→permute→OctoWS2811→wire→strip = correct."""
-    for intended in [(255,0,0), (0,255,0), (0,0,255)]:
-        r, g, b = intended
+    for intended_r, intended_g, intended_b in [(255,0,0), (0,255,0), (0,0,255)]:
+        intended = (intended_r, intended_g, intended_b)
         perm = PERMUTATION_TABLE[strip_order]
-        sent = (intended[perm[0]], intended[perm[1]], intended[perm[2]])
-        # OctoWS2811 WS2811_GRB puts [G_in, R_in, B_in] on wire
-        wire = (sent[1], sent[0], sent[2])  # [G, R, B] of sent values
-        # Strip reads wire in its color_order
-        ORDER_MAP = {'R': 0, 'G': 1, 'B': 2}
-        displayed_r = wire[strip_order.index('R')]  # NOT right — need positional
-        # ... (full derivation in test code)
-        assert displayed == intended
+        # Apply permutation to the intended RGB values
+        sent_r = intended[perm[0]]
+        sent_g = intended[perm[1]]
+        sent_b = intended[perm[2]]
+        # OctoWS2811 WS2811_GRB rearranges setPixel(r,g,b) to wire [G, R, B]
+        wire = [sent_g, sent_r, sent_b]
+        # Strip reads wire bytes positionally according to its color_order
+        # e.g. "BGR" means wire[0]=B, wire[1]=G, wire[2]=R
+        displayed = [0, 0, 0]
+        for pos, channel in enumerate(strip_order):
+            channel_idx = {'R': 0, 'G': 1, 'B': 2}[channel]
+            displayed[channel_idx] = wire[pos]
+        assert tuple(displayed) == intended, (
+            f"{strip_order}: sent ({sent_r},{sent_g},{sent_b}), "
+            f"wire {wire}, displayed {displayed}, expected {intended}"
+        )
 ```
 
 The test is the source of truth. If the table and test disagree, fix the table.
@@ -331,6 +339,13 @@ from .. import hardware_constants as hwc
 ```
 
 All references change from `STRIPS` to `hwc.STRIPS`, etc.
+
+**Also update `renderer.py`**: Lines 201 and 203 hardcode `np.zeros((5, 344, 3))`
+for blackout/no-effect frames. Change to:
+```python
+channel_data = np.zeros((hwc.CHANNELS, hwc.LEDS_PER_CHANNEL, 3), dtype=np.uint8)
+```
+This is required for variable LED count support.
 
 ### Updated `map_frame_fast()`
 
