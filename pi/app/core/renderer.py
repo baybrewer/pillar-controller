@@ -153,6 +153,10 @@ class Renderer:
                      media_manager=None) -> bool:
     """Unified scene activation for all types (generative, audio, media)."""
     if scene_name.startswith('media:'):
+      # State-preserving for media: same item → update params, don't reset playback
+      if scene_name == self.state.current_scene and self.current_effect is not None:
+        self.current_effect.update_params(params or {})
+        return True
       item_id = scene_name[6:]
       if media_manager and item_id in media_manager.items:
         from ..effects.media_playback import MediaPlayback

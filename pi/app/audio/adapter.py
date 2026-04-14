@@ -62,6 +62,8 @@ class AudioCompatAdapter:
     self._energy_max_history = 120  # ~2 seconds at 60fps
     self._buildup_acc = 0.0
     self._drop_acc = 0.0
+    self._drop_state = 'NORMAL'  # NORMAL → BUILDUP → BREAKDOWN → DROP
+    self._prev_drop_state = 'NORMAL'
 
   def adapt(self, repo_snapshot: dict, t: float) -> AudioSnapshot:
     """Convert a repo audio snapshot to the extended format."""
@@ -99,30 +101,55 @@ class AudioCompatAdapter:
     else:
       beat_phase = 0.0
 
-    # Musical state estimation (simple heuristic)
-    # buildup: rising energy trend
-    # breakdown: falling energy with sparse beats
-    # drop: high sustained energy after buildup
+    # Musical state machine matching vendored simulator contract:
+    # NORMAL → BUILDUP → BREAKDOWN → DROP → NORMAL
+    self._prev_drop_state = self._drop_state
+
     if len(self._energy_history) >= 30:
       recent = sum(self._energy_history[-15:]) / 15
       older = sum(self._energy_history[-30:-15]) / 15
-      if recent > older * 1.3:
-        self._buildup_acc = min(self._buildup_acc + 0.02, 1.0)
-        self._drop_acc = max(self._drop_acc - 0.05, 0.0)
-      elif recent < older * 0.7:
-        self._buildup_acc = max(self._buildup_acc - 0.05, 0.0)
-        self._drop_acc = max(self._drop_acc - 0.02, 0.0)
-      else:
-        if self._buildup_acc > 0.5 and beat_energy > 1.5:
-          self._drop_acc = min(self._drop_acc + 0.05, 1.0)
-          self._buildup_acc = max(self._buildup_acc - 0.1, 0.0)
+
+      if self._drop_state == 'NORMAL':
+        # Rising energy with consistent beats → buildup
+        if recent > older * 1.3 and self._beat_count > 4:
+          self._buildup_acc = min(self._buildup_acc + 0.02, 1.0)
+          if self._buildup_acc > 0.5:
+            self._drop_state = 'BUILDUP'
         else:
           self._buildup_acc = max(self._buildup_acc - 0.01, 0.0)
-          self._drop_acc = max(self._drop_acc - 0.01, 0.0)
 
-    # Boolean states matching source simulator contract
-    is_breakdown = level < 0.3 and self._buildup_acc < 0.2
-    is_drop = self._drop_acc > 0.5
+      elif self._drop_state == 'BUILDUP':
+        self._buildup_acc = min(self._buildup_acc + 0.01, 1.0)
+        # Bass drops below 30% of recent peak → breakdown
+        if bass < recent * 0.3:
+          self._drop_state = 'BREAKDOWN'
+        # Energy falls without breakdown → back to normal
+        elif recent < older * 0.5:
+          self._drop_state = 'NORMAL'
+          self._buildup_acc = 0.0
+
+      elif self._drop_state == 'BREAKDOWN':
+        # Bass surges back + beat → DROP
+        if bass > recent * 0.7 and beat:
+          self._drop_state = 'DROP'
+          self._drop_acc = min(self._buildup_acc + 0.5, 1.5)
+          self._buildup_acc = 0.0
+        # Timeout: 5 seconds without drop → back to normal
+        elif self._buildup_acc <= 0:
+          self._drop_state = 'NORMAL'
+        else:
+          self._buildup_acc = max(self._buildup_acc - 0.005, 0.0)
+
+      elif self._drop_state == 'DROP':
+        # Drop decays over ~3 seconds
+        self._drop_acc = max(self._drop_acc - 0.02, 0.0)
+        if self._drop_acc <= 0:
+          self._drop_state = 'NORMAL'
+
+    # drop: True ONLY on the frame of BREAKDOWN→DROP transition (edge trigger)
+    is_drop = (self._drop_state == 'DROP' and self._prev_drop_state != 'DROP')
+    # breakdown: True only during actual BREAKDOWN state (after buildup, before drop)
+    is_breakdown = (self._drop_state == 'BREAKDOWN')
 
     # Bands: expand 3-band to 10-band via interpolation
     bands = self._expand_bands(bass, mid, high)
