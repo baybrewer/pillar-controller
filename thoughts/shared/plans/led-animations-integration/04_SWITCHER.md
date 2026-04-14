@@ -86,7 +86,11 @@ GET /api/scenes/switcher/status
 
 ## UI — Switcher panel
 
-When "Animation Switcher" is selected in the Effects tab, show a special panel:
+When "Animation Switcher" is selected in the Effects tab, show a special panel.
+
+**Note:** With ~47 effects total, a flat checkbox list is bad mobile UX. Use a two-step approach:
+
+### Playlist builder (grouped chip selector)
 
 ```
 ┌─────────────────────────────────────────┐
@@ -96,25 +100,29 @@ When "Animation Switcher" is selected in the Effects tab, show a special panel:
 │ Fade Duration [══●═══════] 2.0s          │
 │ Shuffle      [✓]                         │
 │                                          │
-│ Playlist:                                │
-│  ✓ Aurora Borealis                       │
-│  ✓ Fireplace                             │
-│  ✓ Plasma                                │
-│  ✓ Lava Lamp                             │
-│  ☐ Ocean Waves                           │
-│  ☐ Starfield                             │
-│  ... (all effects as checkboxes)         │
+│ Playlist (4 selected):                   │
+│  [Aurora ×] [Fireplace ×] [Plasma ×]    │
+│  [Lava Lamp ×]                           │
+│  [+ Add Effect]                          │
 │                                          │
-│ Now: Aurora Borealis → Fireplace (4s)    │
-│ [▓▓▓▓▓▓▓░░░] 65% fade                   │
-│                                          │
+│ Now: Aurora → Fireplace (4s)             │
+│ [▓▓▓▓▓▓▓░░░] 65%                        │
 └─────────────────────────────────────────┘
 ```
 
+**"+ Add Effect" opens a grouped dropdown/modal:**
+- Categories: Classic, Ambient, Sound, Built-in
+- Tap an effect to add it as a chip
+- Tap × on a chip to remove it
+- At least 2 required to activate
+
+This avoids a 47-item checkbox list and is touch-friendly.
+
 ### JS implementation
 
-- Checkbox list of all non-diagnostic effects
-- At least 2 must be selected to activate
+- Playlist stored as array of effect names
+- Chips rendered as removable tags
+- "Add Effect" opens a categorized picker (reuses catalog data)
 - Live status via WebSocket or polling
 - Interval/fade sliders send re-activate with updated params
 

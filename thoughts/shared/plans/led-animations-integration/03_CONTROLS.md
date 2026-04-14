@@ -93,6 +93,18 @@ The `palette` param is handled by the effect's `__init__` to set `self.palette_i
 - `.param-slider` styling matching existing brightness slider
 - `.palette-select` dropdown styling
 
+## Important: loadEffects() refactor required
+
+The current `loadEffects()` in `app.js` rebuilds the Effects tab from `/api/scenes/list` on every call. This must be refactored to:
+
+1. Fetch from `/api/effects/catalog` (richer metadata with params/palettes)
+2. Store result in an in-memory `effectsCatalog` object
+3. Render category sections + active controls from that state
+4. Only re-fetch on tab activation, not on every activate call
+5. After activating an effect, update the active highlight without re-fetching
+
+This prevents the param controls from being destroyed every time an effect is activated.
+
 ## Param change flow
 
 1. User moves speed slider

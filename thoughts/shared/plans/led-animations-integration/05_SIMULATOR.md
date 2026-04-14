@@ -31,10 +31,14 @@ The Sim tab shows a real-time pixel-dot visualization of the active animation on
 
 ### Pixel rendering
 
-**Size:** Each LED is a filled circle ~6px diameter (the size of a small "o" in body text)
-**Spacing:** ~2px gap between pixels
-**Total canvas:** ~80px wide × ~1400px tall for 10×172 (scrollable)
-**Colors:** Actual RGB values from the effect render
+**Internal canvas size:** 86px wide × 1382px tall (10 dots × 8px pitch + 6px margin, 172 dots × 8px pitch + 6px margin).
+**Display size:** CSS-controlled, NOT `width: 100%`. Two modes:
+- **1:1 mode (default on desktop):** Canvas displayed at native 86×1382px inside a scrollable container. Each dot is exactly 6px — small like a lowercase "o".
+- **Fit mode (default on mobile ≤480px):** Canvas CSS-scaled to fit viewport width (~340px), making dots ~24px. User can pinch-zoom for detail.
+
+**Important:** Set `canvas.width = 86; canvas.height = 1382;` as the internal resolution. Control display size ONLY via CSS `width`/`height` on the canvas element, NOT via canvas attributes. Use `image-rendering: pixelated` for crisp scaling.
+
+**Colors:** Actual RGB values from the effect render. Black pixels (0,0,0) are drawn as very dark gray (8,8,12) to show the grid.
 
 ### Layout from installation config
 
@@ -46,9 +50,18 @@ The simulator reads the installation config to determine:
 
 If `spatial_map.json` exists and geometry_mode is `front_projection`, use the UV coordinates to position pixels in their physical layout instead of the grid.
 
+### Mobile layout
+
+On phones (≤480px), the Sim tab uses a **stacked layout** (not two-column):
+1. Sticky control bar: effect selector + Preview/Stop buttons
+2. Scrollable canvas below
+3. Advanced controls (speed, palette, FPS) collapsible below the canvas
+
+On wider screens (>480px), two-column layout with controls on the left.
+
 ### Canvas rendering approach
 
-Use HTML5 Canvas with `OffscreenCanvas` or direct `2d` context:
+Use HTML5 Canvas with `2d` context. Internal resolution is fixed; CSS controls display size:
 
 ```javascript
 function renderSimulator(frameData, width, height) {
@@ -112,18 +125,19 @@ Below the canvas, show:
 
 ## HTML changes
 
-Replace the current Sim tab content with a two-column layout:
-- Left: controls (effect selector, params, start/stop)
-- Right: canvas container with scroll
+Replace the current Sim tab with a responsive layout:
+- **Mobile (≤480px):** Stacked — sticky control bar on top, scrollable canvas below
+- **Desktop (>480px):** Two-column — controls left, canvas right
 
 ## CSS changes
 
-- `.sim-layout` — flexbox two-column
-- `.sim-controls` — fixed width left panel
-- `.sim-canvas-wrap` — scrollable right panel
-- `.sim-pixel` — not needed (canvas-rendered)
+- `.sim-layout` — flexbox column (mobile) / row (desktop via media query)
+- `.sim-controls` — sticky top bar on mobile, fixed-width left panel on desktop
+- `.sim-canvas-wrap` — scrollable container, `overflow-y: auto; max-height: 70vh;`
+- `.sim-canvas` — `image-rendering: pixelated;` for crisp scaling
 - `.sim-strip-labels` — bottom strip label row
-- Media queries: stack vertically on narrow screens
+- View toggle: "1:1" vs "Fit" button switches CSS class on canvas container
+- `@media (min-width: 480px)` — switch to side-by-side layout
 
 ## Performance
 
