@@ -42,14 +42,11 @@ class PreviewService:
 
   def start(self, effect_name: str, params: dict = None, fps: int = 30):
     """Start a preview effect (separate from live)."""
-    from ..effects.generative import EFFECTS
-    from ..effects.audio_reactive import AUDIO_EFFECTS
-
-    all_effects = {**EFFECTS, **AUDIO_EFFECTS}
-    if effect_name not in all_effects:
+    # Look up from renderer's registry — includes built-in AND imported effects
+    if effect_name not in self._renderer.effect_registry:
       raise ValueError(f"Unknown effect: {effect_name}")
 
-    effect_cls = all_effects[effect_name]
+    effect_cls = self._renderer.effect_registry[effect_name]
     from ..mapping.cylinder import N
     internal_width = self._renderer.internal_width if hasattr(self._renderer, 'internal_width') else 10
 

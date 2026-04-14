@@ -7,9 +7,11 @@ from app.preview.service import PreviewService, FRAME_HEADER_FORMAT, MSG_TYPE_FR
 
 
 def _make_renderer():
+  from app.effects.generative import EFFECTS
   renderer = MagicMock()
   renderer.internal_width = 10
   renderer.effects_config = {}
+  renderer.effect_registry = dict(EFFECTS)
   return renderer
 
 

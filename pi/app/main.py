@@ -26,6 +26,8 @@ from .config.spatial_map import load_spatial_map
 from .setup.session import SetupSessionService
 from .mapping.runtime_plan import load_controller_profile, compile_output_plan
 from .preview.service import PreviewService
+from .effects.imported import IMPORTED_EFFECTS
+from .effects.catalog import EffectCatalogService, EffectMeta
 
 DEV_MODE = os.environ.get('PILLAR_DEV', '').strip() == '1'
 
@@ -116,6 +118,24 @@ def main():
   for name, cls in DIAGNOSTIC_EFFECTS.items():
     renderer.register_effect(name, cls)
 
+  # Register imported animations into renderer
+  for name, cls in IMPORTED_EFFECTS.items():
+    renderer.register_effect(name, cls)
+  logger.info(f"Registered {len(IMPORTED_EFFECTS)} imported effects")
+
+  # Create shared catalog with all effects including imported
+  effect_catalog = EffectCatalogService()
+  for name, cls in IMPORTED_EFFECTS.items():
+    meta = EffectMeta(
+      name=name,
+      label=getattr(cls, 'DISPLAY_NAME', name.replace('_', ' ').title()),
+      group=getattr(cls, 'CATEGORY', 'imported'),
+      description=getattr(cls, 'DESCRIPTION', ''),
+      imported=True,
+      audio_requires=getattr(cls, 'AUDIO_REQUIRES', ()),
+    )
+    effect_catalog.register_imported(name, meta)
+
   # Installation config — mutable strip setup truth
   installation = load_installation(config_dir)
   spatial_map = load_spatial_map(config_dir)
@@ -170,6 +190,7 @@ def main():
     setup_session_service=setup_service,
     spatial_map=spatial_map,
     preview_service=preview_service,
+    effect_catalog=effect_catalog,
   )
 
   # Track background tasks for clean shutdown
