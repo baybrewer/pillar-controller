@@ -25,13 +25,12 @@ class TestGetAuthToken:
 
 class TestCreateAuthDependency:
   @pytest.mark.asyncio
-  async def test_create_auth_dependency_rejects_no_token(self):
-    """No token configured -> all requests rejected with 401."""
+  async def test_create_auth_dependency_allows_no_token(self):
+    """No token configured -> open access (LAN-only device)."""
     config = {}
     dep = create_auth_dependency(config)
-    with pytest.raises(HTTPException) as exc_info:
-      await dep(credentials=None)
-    assert exc_info.value.status_code == 401
+    # Should not raise — open access when no token configured
+    await dep(credentials=None)
 
   @pytest.mark.asyncio
   async def test_create_auth_dependency_rejects_wrong_token(self):

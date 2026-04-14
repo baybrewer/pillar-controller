@@ -28,11 +28,9 @@ def create_auth_dependency(config: dict) -> Callable:
   async def require_auth(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
   ):
+    # No token configured = open access (LAN-only device)
     if configured_token is None:
-      raise HTTPException(
-        status_code=401,
-        detail="Authentication not configured",
-      )
+      return
 
     if credentials is None or credentials.credentials != configured_token:
       raise HTTPException(

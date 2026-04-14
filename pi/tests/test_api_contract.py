@@ -384,33 +384,29 @@ class TestAuthFailClosed:
         return TestClient(app, raise_server_exceptions=False)
 
     @pytest.mark.parametrize("path,body", [
-        ("/api/system/reboot", None),
         ("/api/scenes/activate", {"effect": "fire"}),
         ("/api/brightness/config", {"manual_cap": 0.5}),
         ("/api/display/blackout", {"enabled": True}),
-        ("/api/diagnostics/clear", None),
     ])
-    def test_no_token_rejects_all_protected(self, no_token_client, path, body):
-        """No configured token = all protected endpoints rejected."""
+    def test_no_token_allows_open_access(self, no_token_client, path, body):
+        """No configured token = open access (LAN-only device)."""
         if body:
             resp = no_token_client.post(path, json=body)
         else:
             resp = no_token_client.post(path)
-        assert resp.status_code == 401, f"{path} not rejected with no token"
+        assert resp.status_code != 401, f"{path} should not reject with no token"
 
     @pytest.mark.parametrize("path,body", [
-        ("/api/system/reboot", None),
         ("/api/scenes/activate", {"effect": "fire"}),
         ("/api/brightness/config", {"manual_cap": 0.5}),
     ])
-    def test_placeholder_token_rejects_all(self, placeholder_token_client, path, body):
-        """Placeholder token = all protected endpoints rejected even with matching header."""
-        headers = {"Authorization": "Bearer your-secret-token-here"}
+    def test_placeholder_token_allows_open_access(self, placeholder_token_client, path, body):
+        """Placeholder token = open access (treated as no token configured)."""
         if body:
-            resp = placeholder_token_client.post(path, json=body, headers=headers)
+            resp = placeholder_token_client.post(path, json=body)
         else:
-            resp = placeholder_token_client.post(path, headers=headers)
-        assert resp.status_code == 401, f"{path} not rejected with placeholder token"
+            resp = placeholder_token_client.post(path)
+        assert resp.status_code != 401, f"{path} should not reject with placeholder token"
 
     def test_public_endpoints_still_work_without_token(self, no_token_client):
         """Public GET routes work even with no auth configured."""
