@@ -54,15 +54,15 @@ Add per-effect parameter metadata derived from each class's `PARAMS` attribute:
 
 ### Canonical naming scheme
 
-Imported effect IDs must avoid collisions with existing built-in effects. Use the `sim_` prefix for imported effects that share names with built-ins:
+Imported effect IDs must avoid collisions with existing built-in effects. Use the `_sim` **suffix** convention matching the existing `imported_sim_meta.py`:
 
-| Source class | Imported ID | Note |
-|-------------|-------------|------|
-| Plasma | `sim_plasma` | Avoids collision with built-in `plasma` |
-| RainbowCycle | `sim_rainbow_cycle` | Avoids collision with built-in `rainbow_rotate` |
-| All others | snake_case of display name | e.g., `aurora_borealis`, `fireplace`, `bass_fire` |
+| Source class | Canonical imported ID |
+|-------------|---------------------|
+| Plasma | `plasma_sim` |
+| RainbowCycle | `rainbow_cycle_sim` |
+| All others (no collision) | snake_case of display name: `aurora_borealis`, `fireplace`, `bass_fire`, etc. |
 
-This matches the existing `imported_sim_meta.py` convention (`plasma_sim`, `rainbow_cycle_sim`).
+**This is the ONLY naming convention.** All plan docs, API examples, test references, switcher playlists, and catalog entries must use these exact IDs. No `sim_` prefix variant.
 
 ### Palette wire format
 

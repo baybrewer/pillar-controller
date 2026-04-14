@@ -56,13 +56,16 @@ This avoids modifying the renderer's core path.
 
 ## Critical: Audio adapter fixes needed before port
 
-The adapter must match the source simulator's contract:
+The adapter must match the **frozen contract defined in `01_CORE_ENGINE.md`**. The canonical fields are:
 
-| Field | Source behavior | Current adapter | Fix needed |
-|-------|----------------|-----------------|------------|
-| `drop` | Boolean onset event (True for ~2-3s burst, then False) | Float accumulator (0-1) | Add `drop_event: bool` (onset trigger) alongside `drop: float` (intensity) |
-| `_time` | Used by VUMeter/BeatPulse for breakdown sine | Not exposed | Add `_time` alias for `time_s` |
-| `drop_intensity` | 0-1+ magnitude of drop | Not exposed | Add field |
+| Field | Type | Description |
+|-------|------|-------------|
+| `drop` | `bool` | True during drop moment (onset trigger, matches source's `audio.drop`) |
+| `drop_intensity` | `float` | 0-1+ magnitude of drop |
+| `breakdown` | `bool` | True during tension before drop (matches source's `audio.breakdown`) |
+| `_time` | `float` | Alias for `time_s` (matches source's `audio._time`) |
+
+**There is no `drop_event` field.** The `drop` field IS the boolean event. All ported effects use `audio.drop` directly as a bool, matching the source.
 
 ## Critical: Stateful effects — no re-create on param change
 

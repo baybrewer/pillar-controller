@@ -58,7 +58,8 @@ POST /api/scenes/activate
     "interval": 15,
     "fade_duration": 2.0,
     "shuffle": false,
-    "playlist": ["aurora_borealis", "fireplace", "plasma", "lava_lamp"],
+    "playlist": ["aurora_borealis", "fireplace", "plasma_sim", "lava_lamp"]
+  // Note: uses canonical IDs from imported_sim_meta.py (_sim suffix for collisions),
     "playlist_params": {
       "aurora_borealis": {"speed": 2.0, "palette": "Ice"},
       "fireplace": {"fuel": 0.8}
@@ -80,7 +81,7 @@ GET /api/scenes/switcher/status
   "phase": "fading",
   "progress": 0.65,
   "time_remaining": 4.2,
-  "playlist": ["aurora_borealis", "fireplace", "plasma", "lava_lamp"]
+  "playlist": ["aurora_borealis", "fireplace", "plasma_sim", "lava_lamp"]
 }
 ```
 

@@ -106,5 +106,5 @@ All ported effects use these exact field names. No other names allowed.
 
 - All engine tests pass
 - No Pygame imports anywhere
-- Audio adapter updated with `drop_event`, `_time`, `drop_intensity`
+- Audio adapter updated: `drop` changed to bool, `breakdown` to bool, `_time` alias added, `drop_intensity` float added
 - `imported_sim_helpers.py` can be deprecated in favor of engine modules
