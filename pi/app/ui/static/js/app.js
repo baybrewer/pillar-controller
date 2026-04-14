@@ -117,6 +117,7 @@ function initTabs() {
       if (tab.dataset.tab === 'media') loadMedia();
       if (tab.dataset.tab === 'audio') loadAudioDevices();
       if (tab.dataset.tab === 'diag') loadStats();
+      if (tab.dataset.tab === 'sim') loadSimEffects();
       if (tab.dataset.tab === 'system') loadSystemStatus();
     });
   });
@@ -319,6 +320,109 @@ function initSystem() {
       api('POST', '/api/system/reboot');
     }
   });
+
+  // System sub-navigation
+  document.querySelectorAll('.subnav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.subnav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.system-section').forEach(s => {
+        s.classList.add('hidden');
+        s.classList.remove('active');
+      });
+      btn.classList.add('active');
+      const section = document.getElementById(btn.dataset.section);
+      if (section) {
+        section.classList.remove('hidden');
+        section.classList.add('active');
+      }
+      if (btn.dataset.section === 'system-setup') loadSetupStatus();
+    });
+  });
+
+  initSetup();
+}
+
+// --- Setup ---
+
+let setupSessionId = null;
+
+async function loadSetupStatus() {
+  const data = await api('GET', '/api/setup/session/status');
+  if (!data) return;
+
+  if (data.active) {
+    setupSessionId = data.session_id;
+    showSetupActive();
+    await loadStripInventory();
+  } else {
+    setupSessionId = null;
+    showSetupInactive();
+  }
+}
+
+function showSetupActive() {
+  document.getElementById('setup-status-msg').textContent = `Session active: ${setupSessionId}`;
+  document.getElementById('setup-start-btn').classList.add('hidden');
+  document.getElementById('setup-cancel-btn').classList.remove('hidden');
+  document.getElementById('setup-commit-btn').classList.remove('hidden');
+  document.getElementById('setup-strip-inventory').classList.remove('hidden');
+}
+
+function showSetupInactive() {
+  document.getElementById('setup-status-msg').textContent = 'No active session';
+  document.getElementById('setup-start-btn').classList.remove('hidden');
+  document.getElementById('setup-cancel-btn').classList.add('hidden');
+  document.getElementById('setup-commit-btn').classList.add('hidden');
+  document.getElementById('setup-strip-inventory').classList.add('hidden');
+}
+
+async function loadStripInventory() {
+  const data = await api('GET', '/api/setup/installation');
+  if (!data || !data.strips) return;
+
+  const tbody = document.getElementById('strip-table-body');
+  tbody.innerHTML = '';
+
+  for (const strip of data.strips) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${strip.id}</td>
+      <td>${strip.label}</td>
+      <td>${strip.enabled ? 'Yes' : 'No'}</td>
+      <td>${strip.installed_led_count}</td>
+      <td>${strip.color_order}</td>
+      <td>${strip.direction === 'bottom_to_top' ? '↑' : '↓'}</td>
+      <td>${strip.output_channel}</td>
+      <td>${strip.output_slot}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function initSetup() {
+  document.getElementById('setup-start-btn').addEventListener('click', async () => {
+    const data = await api('POST', '/api/setup/session/start');
+    if (data && data.session_id) {
+      setupSessionId = data.session_id;
+      showSetupActive();
+      await loadStripInventory();
+    }
+  });
+
+  document.getElementById('setup-cancel-btn').addEventListener('click', async () => {
+    await api('POST', '/api/setup/session/cancel');
+    setupSessionId = null;
+    showSetupInactive();
+  });
+
+  document.getElementById('setup-commit-btn').addEventListener('click', async () => {
+    if (!setupSessionId) return;
+    const data = await api('POST', '/api/setup/session/commit', { session_id: setupSessionId });
+    if (data && data.status === 'committed') {
+      setupSessionId = null;
+      showSetupInactive();
+    }
+  });
 }
 
 // --- Brightness ---
@@ -379,6 +483,127 @@ function initAuth() {
   });
 }
 
+// --- Simulator ---
+
+let previewWs = null;
+
+function initSim() {
+  const effectSelect = document.getElementById('sim-effect-select');
+
+  document.getElementById('sim-start-btn').addEventListener('click', async () => {
+    const effect = effectSelect.value;
+    if (!effect) return;
+    const data = await api('POST', '/api/preview/start', { effect, params: {}, fps: 30 });
+    if (data && data.active) {
+      document.getElementById('sim-status').textContent = `Previewing: ${effect}`;
+      connectPreviewWs();
+    }
+  });
+
+  document.getElementById('sim-stop-btn').addEventListener('click', async () => {
+    await api('POST', '/api/preview/stop');
+    document.getElementById('sim-status').textContent = 'Idle';
+    if (previewWs) { previewWs.close(); previewWs = null; }
+  });
+}
+
+async function loadSimEffects() {
+  const data = await api('GET', '/api/scenes/list');
+  if (!data) return;
+  const select = document.getElementById('sim-effect-select');
+  select.innerHTML = '';
+  for (const [name, info] of Object.entries(data.effects)) {
+    if (name.startsWith('diag_')) continue;
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name.replace(/_/g, ' ');
+    select.appendChild(opt);
+  }
+}
+
+function connectPreviewWs() {
+  if (previewWs) previewWs.close();
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  previewWs = new WebSocket(`${proto}//${location.host}/api/preview/ws`);
+  previewWs.binaryType = 'arraybuffer';
+
+  previewWs.onmessage = (evt) => {
+    if (evt.data instanceof ArrayBuffer && evt.data.byteLength > 10) {
+      renderPreviewFrame(evt.data);
+    }
+  };
+
+  previewWs.onclose = () => { previewWs = null; };
+}
+
+function renderPreviewFrame(buffer) {
+  const view = new DataView(buffer);
+  const type = view.getUint8(0);
+  if (type !== 0x01) return;
+
+  const width = view.getUint16(5, true);
+  const height = view.getUint16(7, true);
+  const headerSize = 10;
+  const pixels = new Uint8Array(buffer, headerSize);
+
+  const canvas = document.getElementById('sim-canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(width, height);
+
+  // Transpose: our frame is (width, height, 3) but canvas expects (height, width, 4)
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
+      const srcIdx = (x * height + y) * 3;
+      const dstIdx = (y * width + x) * 4;
+      imgData.data[dstIdx] = pixels[srcIdx];
+      imgData.data[dstIdx + 1] = pixels[srcIdx + 1];
+      imgData.data[dstIdx + 2] = pixels[srcIdx + 2];
+      imgData.data[dstIdx + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// --- Tooltips (mobile long-press) ---
+
+function initTooltips() {
+  let tooltipTimer = null;
+  let activeTooltip = null;
+
+  function showTooltip(el) {
+    hideTooltip();
+    const text = el.dataset.tooltip;
+    if (!text) return;
+    const popup = document.createElement('div');
+    popup.className = 'tooltip-popup';
+    popup.textContent = text;
+    el.appendChild(popup);
+    activeTooltip = popup;
+  }
+
+  function hideTooltip() {
+    if (activeTooltip) {
+      activeTooltip.remove();
+      activeTooltip = null;
+    }
+    clearTimeout(tooltipTimer);
+  }
+
+  document.addEventListener('touchstart', (e) => {
+    const el = e.target.closest('[data-tooltip]');
+    if (!el) return;
+    tooltipTimer = setTimeout(() => {
+      e.preventDefault();
+      showTooltip(el);
+    }, 600);
+  }, { passive: false });
+
+  document.addEventListener('touchend', hideTooltip);
+  document.addEventListener('touchcancel', hideTooltip);
+}
+
 // --- Init ---
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -390,6 +615,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initAudio();
   initDiagnostics();
   initSystem();
+  initSim();
+  initTooltips();
   connectWS();
   loadPresets();
 });

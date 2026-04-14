@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .auth import create_auth_dependency
 from .deps import AppDeps
 
-from .routes import system, scenes, brightness, media, audio, diagnostics
+from .routes import system, scenes, brightness, media, audio, diagnostics, setup, effects, preview
 from .routes import transport as transport_routes
 from .routes import ws
 
@@ -34,6 +34,8 @@ def create_app(
     media_manager,
     audio_analyzer,
     config: dict,
+    setup_session_service=None,
+    spatial_map=None,
 ) -> FastAPI:
 
     app = FastAPI(title="Pillar Controller", version="1.0.0")
@@ -53,6 +55,8 @@ def create_app(
         media_manager=media_manager,
         audio_analyzer=audio_analyzer,
         max_upload_bytes=max_upload_bytes,
+        setup_session_service=setup_session_service,
+        spatial_map=spatial_map,
     )
 
     # --- WebSocket + broadcast ---
@@ -66,6 +70,9 @@ def create_app(
     app.include_router(audio.create_router(deps, require_auth))
     app.include_router(diagnostics.create_router(deps, require_auth))
     app.include_router(transport_routes.create_router(deps))
+    app.include_router(setup.create_router(deps, require_auth, broadcast_state))
+    app.include_router(effects.create_router(deps))
+    app.include_router(preview.create_router(deps))
     app.include_router(ws_router)
 
     # --- Periodic broadcast ---

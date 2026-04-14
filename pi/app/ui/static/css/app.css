@@ -465,6 +465,127 @@ select {
   margin-bottom: 8px;
 }
 
+/* Tooltip (long-press on mobile, hover on desktop) */
+[data-tooltip] {
+  position: relative;
+}
+
+.tooltip-popup {
+  position: absolute;
+  bottom: 110%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Simulator */
+#sim-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+#sim-effect-select {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+#sim-canvas-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+  overflow: auto;
+}
+
+#sim-canvas {
+  image-rendering: pixelated;
+  width: 100%;
+  max-width: 400px;
+  height: auto;
+}
+
+.text-dim {
+  color: var(--text-dim);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* System sub-navigation */
+.subnav {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.subnav-btn {
+  flex: 1;
+  padding: 8px;
+  background: var(--surface2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.subnav-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.system-section.hidden {
+  display: none;
+}
+
+/* Setup strip inventory table */
+#strip-table-container {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+#strip-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+#strip-table th, #strip-table td {
+  padding: 6px 8px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+
+#strip-table th {
+  background: var(--surface2);
+  color: var(--text-dim);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+#strip-table tr:hover {
+  background: var(--surface2);
+}
+
 /* Responsive */
 @media (min-width: 400px) {
   .button-grid {

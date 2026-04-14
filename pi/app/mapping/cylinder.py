@@ -122,11 +122,11 @@ def serialize_channels(channel_data: np.ndarray) -> bytes:
   """
   Serialize channel data to bytes for USB transport.
 
-  Data is sent as RGB triplets. The Teensy firmware configures OctoWS2811
-  with WS2811_GRB, which handles the RGB->GRB reorder internally.
+  Data is sent as BGR triplets matching the controller wire order.
+  The Teensy firmware configures OctoWS2811 with the same BGR byte order.
 
   channel_data: shape (CHANNELS, LEDS_PER_CHANNEL, 3) uint8
-  Returns: channel-major RGB bytes, CHANNELS * LEDS_PER_CHANNEL * 3 bytes
+  Returns: channel-major bytes, CHANNELS * LEDS_PER_CHANNEL * 3 bytes
   """
   return channel_data.tobytes()
 

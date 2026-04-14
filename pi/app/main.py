@@ -21,6 +21,10 @@ from .audio.analyzer import AudioAnalyzer
 from .effects.generative import EFFECTS
 from .effects.audio_reactive import AUDIO_EFFECTS
 from .diagnostics.patterns import DIAGNOSTIC_EFFECTS
+from .config.installation import load_installation
+from .config.spatial_map import load_spatial_map
+from .setup.session import SetupSessionService
+from .mapping.runtime_plan import load_controller_profile, compile_output_plan
 
 DEV_MODE = os.environ.get('PILLAR_DEV', '').strip() == '1'
 
@@ -111,6 +115,16 @@ def main():
   for name, cls in DIAGNOSTIC_EFFECTS.items():
     renderer.register_effect(name, cls)
 
+  # Installation config — mutable strip setup truth
+  installation = load_installation(config_dir)
+  spatial_map = load_spatial_map(config_dir)
+  controller_profile = load_controller_profile(config.get('hardware'))
+  compiled_plan = compile_output_plan(installation, controller_profile)
+  logger.info(f"Installation: {installation.profile_name}, {len(installation.strips)} strips, geometry={installation.geometry_mode}")
+  logger.info(f"Compiled plan: {compiled_plan.channels}ch x {compiled_plan.leds_per_channel}leds")
+  if spatial_map:
+    logger.info(f"Spatial map: {spatial_map.profile_id}, {len(spatial_map.visible_strips)} visible strips")
+
   # Media
   media_manager = MediaManager(media_dir=media_dir, cache_dir=cache_dir)
   media_manager.scan_library()
@@ -125,6 +139,16 @@ def main():
     logger.warning(f"Failed to restore scene '{startup}', falling back to '{fallback}'")
     renderer.activate_scene(fallback)
 
+  # Setup service
+  setup_service = SetupSessionService(
+    installation=installation,
+    controller=controller_profile,
+    config_dir=config_dir,
+    renderer=renderer,
+    render_state=render_state,
+    state_manager=state_manager,
+  )
+
   # Create app
   app = create_app(
     transport=transport,
@@ -135,6 +159,8 @@ def main():
     media_manager=media_manager,
     audio_analyzer=audio_analyzer,
     config=sys_conf,
+    setup_session_service=setup_service,
+    spatial_map=spatial_map,
   )
 
   # Track background tasks for clean shutdown

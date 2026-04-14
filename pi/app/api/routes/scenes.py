@@ -14,12 +14,27 @@ def create_router(deps, require_auth, broadcast_state) -> APIRouter:
     @router.get("/list")
     async def list_effects():
         all_effects = {}
-        for name in EFFECTS:
-            all_effects[name] = {'type': 'generative'}
-        for name in AUDIO_EFFECTS:
-            all_effects[name] = {'type': 'audio'}
-        for name in DIAGNOSTIC_EFFECTS:
-            all_effects[name] = {'type': 'diagnostic'}
+        for name, cls in EFFECTS.items():
+            desc = cls.__doc__.strip().split('\n')[0] if cls.__doc__ else ''
+            all_effects[name] = {
+                'type': 'generative',
+                'description': desc,
+                'preview_supported': True,
+            }
+        for name, cls in AUDIO_EFFECTS.items():
+            desc = cls.__doc__.strip().split('\n')[0] if cls.__doc__ else ''
+            all_effects[name] = {
+                'type': 'audio',
+                'description': desc,
+                'preview_supported': True,
+            }
+        for name, cls in DIAGNOSTIC_EFFECTS.items():
+            desc = cls.__doc__.strip().split('\n')[0] if cls.__doc__ else ''
+            all_effects[name] = {
+                'type': 'diagnostic',
+                'description': desc,
+                'preview_supported': False,
+            }
         return {'effects': all_effects, 'current': deps.render_state.current_scene}
 
     @router.post("/activate", dependencies=[Depends(require_auth)])

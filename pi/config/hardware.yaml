@@ -1,5 +1,6 @@
 # Hardware configuration for the LED pillar
-# This is the single source of truth for physical layout
+# This is the single source of truth for physical layout and controller envelope.
+# Setup-time mutable strip config lives in installation.yaml (not here).
 
 pillar:
   strips: 10
@@ -32,3 +33,14 @@ pillar:
 
   # OctoWS2811 pin assignments (Teensy 4.1 defaults)
   octo_pins: [2, 14, 7, 8, 6, 20, 21, 5]
+
+# Immutable controller envelope — do not modify at runtime via setup UI.
+# Per-strip color order and count live in installation.yaml.
+controller:
+  output_backend: octows2811
+  signal_family: ws281x_800khz
+  controller_wire_order: BGR
+  active_outputs: 5
+  total_outputs: 8
+  electrical_leds_per_output: 344
+  physical_leds_per_strip: 172

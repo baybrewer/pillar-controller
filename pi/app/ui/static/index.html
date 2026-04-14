@@ -25,8 +25,8 @@
       </div>
       <h1>Pillar</h1>
       <div class="status-right">
-        <button id="blackout-on-btn" class="icon-btn" title="Blackout ON">B</button>
-        <button id="blackout-off-btn" class="icon-btn" title="Blackout OFF">R</button>
+        <button id="blackout-on-btn" class="icon-btn" title="Turn all LEDs off immediately" data-tooltip="Turn all LEDs off immediately">Blackout</button>
+        <button id="blackout-off-btn" class="icon-btn" title="Restore live output after blackout" data-tooltip="Restore live output after blackout">Resume</button>
       </div>
     </header>
 
@@ -53,6 +53,7 @@
       <button class="tab" data-tab="media">Media</button>
       <button class="tab" data-tab="audio">Audio</button>
       <button class="tab" data-tab="diag">Diag</button>
+      <button class="tab" data-tab="sim">Sim</button>
       <button class="tab" data-tab="system">System</button>
     </nav>
 
@@ -135,29 +136,92 @@
         </div>
       </section>
 
+      <!-- SIMULATOR -->
+      <section id="panel-sim" class="panel">
+        <h2>Simulator Preview</h2>
+        <div id="sim-controls">
+          <select id="sim-effect-select"></select>
+          <button id="sim-start-btn" class="action-btn">Preview</button>
+          <button id="sim-stop-btn" class="action-btn secondary">Stop</button>
+          <span id="sim-status">Idle</span>
+        </div>
+        <div id="sim-canvas-container">
+          <canvas id="sim-canvas" width="10" height="172"></canvas>
+        </div>
+        <p id="sim-info" class="text-dim">Preview runs without changing live LEDs</p>
+      </section>
+
       <!-- SYSTEM -->
       <section id="panel-system" class="panel">
         <div class="system-info">
           <h2>System</h2>
-          <div id="system-stats">
-            <p>FPS Target: <select id="fps-select">
-              <option value="30">30</option>
-              <option value="60" selected>60</option>
-              <option value="75">75</option>
-              <option value="90">90</option>
-            </select></p>
-            <p>Transport: <span id="sys-transport">--</span></p>
-            <p>Firmware: <span id="sys-firmware">--</span></p>
-            <p>Frames Sent: <span id="sys-frames">--</span></p>
+
+          <!-- System sub-navigation -->
+          <div id="system-subnav" class="subnav">
+            <button class="subnav-btn active" data-section="system-status">Status</button>
+            <button class="subnav-btn" data-section="system-setup">Setup</button>
+            <button class="subnav-btn" data-section="system-admin">Admin</button>
           </div>
-          <div class="control-group">
-            <label>Auth Token</label>
-            <input type="password" id="system-token-input" placeholder="Enter token">
-            <button id="system-token-save" class="action-btn secondary">Update Token</button>
+
+          <!-- Status section -->
+          <div id="system-status" class="system-section active">
+            <div id="system-stats">
+              <p>FPS Target: <select id="fps-select">
+                <option value="30">30</option>
+                <option value="60" selected>60</option>
+                <option value="75">75</option>
+                <option value="90">90</option>
+              </select></p>
+              <p>Transport: <span id="sys-transport">--</span></p>
+              <p>Firmware: <span id="sys-firmware">--</span></p>
+              <p>Frames Sent: <span id="sys-frames">--</span></p>
+            </div>
           </div>
-          <div class="system-actions">
-            <button id="restart-app-btn" class="action-btn secondary">Restart App</button>
-            <button id="reboot-btn" class="action-btn danger">Reboot Pi</button>
+
+          <!-- Setup section -->
+          <div id="system-setup" class="system-section hidden">
+            <h3>Installation Setup</h3>
+            <p id="setup-status-msg">No active session</p>
+            <div id="setup-controls">
+              <button id="setup-start-btn" class="action-btn" data-tooltip="Configure strip count, color order, and mapping">Start Setup Session</button>
+              <button id="setup-cancel-btn" class="action-btn secondary hidden">Cancel Setup</button>
+              <button id="setup-commit-btn" class="action-btn hidden">Commit Changes</button>
+            </div>
+
+            <!-- Strip inventory table (shown during active session) -->
+            <div id="setup-strip-inventory" class="hidden">
+              <h3>Strip Inventory</h3>
+              <div id="strip-table-container">
+                <table id="strip-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Label</th>
+                      <th>Enabled</th>
+                      <th>LEDs</th>
+                      <th>Color</th>
+                      <th>Dir</th>
+                      <th>Ch</th>
+                      <th>Slot</th>
+                    </tr>
+                  </thead>
+                  <tbody id="strip-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Admin section -->
+          <div id="system-admin" class="system-section hidden">
+            <div class="control-group">
+              <label>Auth Token</label>
+              <input type="password" id="system-token-input" placeholder="Enter token">
+              <button id="system-token-save" class="action-btn secondary">Update Token</button>
+            </div>
+            <div class="system-actions">
+              <button id="restart-app-btn" class="action-btn secondary">Restart App</button>
+              <button id="reboot-btn" class="action-btn danger">Reboot Pi</button>
+            </div>
           </div>
         </div>
       </section>

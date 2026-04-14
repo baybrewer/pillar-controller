@@ -748,7 +748,7 @@ The UI must expose these tests:
 | paired serpentine chase | verify top jumper direction |
 | seam marker on S0/S9 | verify wrap boundary |
 | channel test CH0..CH4 | verify Octo output assignment |
-| RGB order test | verify GRB vs RGB assumption |
+| RGB order test | verify BGR controller wire order assumption |
 
 ## 4.9 Wiring quality requirements
 
@@ -1248,7 +1248,7 @@ PJRC documents that OctoWS2811 uses DMA to update up to 8 strips simultaneously 
 - `ledsPerStrip = 344`
 - `activeOutputs = 5`
 - `unusedOutputs = 3`
-- color order configurable, default likely `GRB`
+- color order configurable, current live path is `BGR`
 
 ### Why 344
 Because each electrical channel represents two 172-LED strips chained in serpentine fashion.
@@ -1460,8 +1460,8 @@ Because WS2812-family strips vary, firmware must expose configurable color order
 - `BRG`
 - etc.
 
-Default to `GRB`.
-Confirm with the RGB order diagnostic at bring-up.
+Current live default is `BGR` (confirmed at bring-up).
+Per-strip color order is managed via `installation.yaml` and compiled at runtime.
 
 ## 6.17 Pseudocode sketch
 

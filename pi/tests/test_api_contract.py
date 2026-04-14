@@ -460,8 +460,6 @@ class TestNonexistentRoutes:
     """Verify v2/aspirational routes do NOT exist."""
 
     @pytest.mark.parametrize("path", [
-        "/api/effects/list",
-        "/api/effects/config",
         "/api/mapping/config",
         "/api/mapping/pairs",
         "/api/playlists",
