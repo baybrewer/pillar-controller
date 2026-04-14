@@ -122,7 +122,7 @@ This avoids a 47-item checkbox list and is touch-friendly.
 
 - Playlist stored as array of effect names
 - Chips rendered as removable tags
-- "Add Effect" opens a categorized picker (reuses catalog data)
+- "Add Effect" opens a categorized picker using `/api/effects/catalog` (NOT `/api/scenes/list` — the catalog provides `group` and `label` metadata needed for category grouping). The legacy scenes/list endpoint only exposes `type`, which is insufficient for the imported category hierarchy.
 - Live status via WebSocket or polling
 - Interval/fade sliders send re-activate with updated params
 

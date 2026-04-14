@@ -34,7 +34,7 @@ The Sim tab shows a real-time pixel-dot visualization of the active animation on
 **Internal canvas size:** 86px wide × 1382px tall (10 dots × 8px pitch + 6px margin, 172 dots × 8px pitch + 6px margin).
 **Display size:** CSS-controlled, NOT `width: 100%`. Two modes:
 - **1:1 mode (default on desktop):** Canvas displayed at native 86×1382px inside a scrollable container. Each dot is exactly 6px — small like a lowercase "o".
-- **Fit mode (default on mobile ≤480px):** Canvas CSS-scaled to fit viewport width (~340px), making dots ~24px. User can pinch-zoom for detail.
+- **Fit mode (default on mobile ≤480px):** Canvas scaled to fit the available *height* (`max-height: calc(100dvh - 120px)` for sticky controls), with auto width. This shows the full pillar at once in a compact overview. The 86×1382 canvas scaled to ~500px tall becomes ~31px wide — small but visible as a strip overview. User can pinch-zoom for detail. Alternatively, use `transform: scale()` on a wrapper div to control both axes proportionally.
 
 **Important:** Set `canvas.width = 86; canvas.height = 1382;` as the internal resolution. Control display size ONLY via CSS `width`/`height` on the canvas element, NOT via canvas attributes. Use `image-rendering: pixelated` for crisp scaling.
 
