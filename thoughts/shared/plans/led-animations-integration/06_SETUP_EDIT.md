@@ -53,6 +53,7 @@ On wider screens (>600px), an editable table is acceptable as an alternative vie
 |-------|------|---------------|------------|
 | Label | text input | freeform, max 10 chars | required |
 | Enabled | checkbox | true/false | — |
+| Logical Order | number input | 0–9 | unique among enabled strips |
 | LEDs | number input | 0–172 | must be ≤ physical max |
 | Color Order | dropdown | RGB, RBG, GRB, GBR, BRG, BGR | valid permutation |
 | Direction | dropdown | ↑ bottom_to_top, ↓ top_to_bottom | valid value |

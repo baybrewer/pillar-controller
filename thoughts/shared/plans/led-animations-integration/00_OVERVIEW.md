@@ -8,7 +8,7 @@ Port the complete `led-animations/led_sim.py` simulator (27 animations, 10 palet
 
 | Category | Count | Names |
 |----------|-------|-------|
-| Classic | 5 | Rainbow Cycle, Feldstein Equation, Feldstein OG, Brett's Favorite, Fireplace |
+| Classic | 5 | Rainbow Cycle (palette color sweep), Feldstein Equation, Feldstein OG (17 custom palettes), Brett's Favorite, Fireplace (16 params) |
 | Ambient | 12 | Plasma, Aurora Borealis, Lava Lamp, Ocean Waves, Starfield, Matrix Rain, Breathing, Fireflies, Nebula, Kaleidoscope, Flow Field, Moire |
 | Sound | 10 | Spectrum, VU Meter, Beat Pulse, Bass Fire, Sound Ripples, Spectrogram, Sound Worm, Particle Burst, Sound Plasma, Strobe Chaos |
 

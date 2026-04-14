@@ -76,15 +76,28 @@ class LEDBuffer:
         return self.data.copy()
 ```
 
+## Audio adapter fixes (prerequisite for Phase 2 sound effects)
+
+The existing `pi/app/audio/adapter.py` `AudioSnapshot` needs these additions before sound-reactive ports can work:
+
+| Field | Current | Fix |
+|-------|---------|-----|
+| `drop` | `float` accumulator (0-1) | Keep as `drop_intensity: float`. Add `drop_event: bool` — True on onset frame only, False after |
+| `_time` | Not exposed | Add `_time` as alias for `time_s` (VUMeter/BeatPulse breakdown sine uses it) |
+| `drop_intensity` | Not exposed | Add from existing `_drop_acc` |
+
+This is a small change to `AudioSnapshot` + `AudioCompatAdapter.adapt()`.
+
 ## Tests
 
 - `test_noise.py` — Perlin output range, cylinder wrapping seam-free, FBM octave count
-- `test_palettes.py` — all 10 palettes produce valid RGB, fire palette range, Feldstein palettes exist
+- `test_palettes.py` — all 10+17 palettes produce valid RGB, fire palette range, all Feldstein palettes exist
 - `test_color.py` — hsv2rgb known values, clamp bounds, scale8 math
-- `test_buffer.py` — set/add/clear/fade/get_frame shape and dtype
+- `test_buffer.py` — set/add/clear/fade/get_frame shape and dtype, persistent state across renders
 
 ## Gate
 
 - All engine tests pass
 - No Pygame imports anywhere
+- Audio adapter updated with `drop_event`, `_time`, `drop_intensity`
 - `imported_sim_helpers.py` can be deprecated in favor of engine modules

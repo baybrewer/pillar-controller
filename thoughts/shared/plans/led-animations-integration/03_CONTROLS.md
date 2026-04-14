@@ -1,14 +1,16 @@
-# Phase 3 — Speed/Palette UI Controls
+# Phase 3 — Per-Effect Parameter Controls
 
 ## Goal
 
-Every animation gets a speed slider and palette selector in the Effects tab UI. Parameters are sent via the existing `/api/scenes/activate` params mechanism.
+Each animation shows its **actual parameters** (from the source `PARAMS` list) in the Effects tab UI. NOT a blanket "speed + palette" — each effect defines its own controls. Parameters are sent via the existing `/api/scenes/activate` params mechanism.
+
+**Critical rule:** Generate UI controls from each effect's `PARAMS` class attribute, not from assumptions. Some effects have no speed param (Spectrum, VUMeter, BeatPulse, BassFire, Spectrogram, StrobeChaos). Some have no standard palette (Fireplace uses fire palette, Feldstein2 has 17 custom palettes). The UI must be data-driven from metadata.
 
 ## API changes
 
 ### Enrich `/api/effects/catalog` response
 
-Add per-effect parameter metadata:
+Add per-effect parameter metadata derived from each class's `PARAMS` attribute:
 
 ```json
 {
@@ -17,17 +19,38 @@ Add per-effect parameter metadata:
       "name": "aurora_borealis",
       "label": "Aurora Borealis",
       "group": "imported_ambient",
-      "description": "Shimmering northern lights",
+      "description": "Shimmering northern lights with flowing curtains",
       "params": [
-        {"name": "speed", "label": "Speed", "min": 0.1, "max": 5.0, "step": 0.1, "default": 1.0, "type": "slider"},
-        {"name": "wave", "label": "Wave", "min": 0.5, "max": 4.0, "step": 0.1, "default": 1.5, "type": "slider"},
-        {"name": "bright", "label": "Brightness", "min": 0.3, "max": 1.5, "step": 0.05, "default": 1.0, "type": "slider"}
+        {"name": "speed", "label": "Speed", "min": 0.05, "max": 2.0, "step": 0.05, "default": 0.4, "type": "slider"},
+        {"name": "wave", "label": "Wave", "min": 0.2, "max": 3.0, "step": 0.1, "default": 1.0, "type": "slider"},
+        {"name": "bright", "label": "Brightness", "min": 0.2, "max": 1.0, "step": 0.05, "default": 0.9, "type": "slider"}
       ],
       "palettes": ["Rainbow", "Ocean", "Sunset", "Forest", "Lava", "Ice", "Neon", "Cyberpunk", "Pastel", "Vapor"],
-      "current_palette": "Rainbow"
+      "default_palette": 0
+    },
+    "feldstein_og": {
+      "params": [
+        {"name": "speed", "label": "Speed", "min": 0.1, "max": 3.0, "step": 0.1, "default": 1.0, "type": "slider"},
+        {"name": "fade", "label": "Fade/Dark", "min": 10, "max": 200, "step": 5, "default": 40, "type": "slider"},
+        {"name": "palette", "label": "Palette", "min": 0, "max": 16, "step": 1, "default": 0, "type": "slider"}
+      ],
+      "palettes": ["Original", "Rainbow", "Ocean", "Fire", "Acid", "Pastel", "Monochrome", "Sunset", "Aurora", "Cyberpunk", "Deep Sea", "Ember", "Neon", "Forest", "Vapor", "Blood Moon", "Ice Storm"],
+      "default_palette": 0,
+      "palette_type": "custom_feldstein"
+    },
+    "spectrum": {
+      "params": [
+        {"name": "gain", "label": "Gain", "min": 0.5, "max": 5.0, "step": 0.1, "default": 2.0, "type": "slider"},
+        {"name": "decay", "label": "Decay", "min": 0.5, "max": 0.99, "step": 0.01, "default": 0.92, "type": "slider"}
+      ],
+      "palettes": ["Rainbow", "Ocean", "Sunset", "Forest", "Lava", "Ice", "Neon", "Cyberpunk", "Pastel", "Vapor"],
+      "default_palette": 0
     }
   }
 }
+```
+
+**Key:** Params and palettes come from each class's metadata, not assumed. Feldstein OG has 17 custom palettes. Fireplace has 16 params and uses fire palette (no standard palette selector). Sound effects without `speed` don't show a speed slider.
 ```
 
 ### Activate with params

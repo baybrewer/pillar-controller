@@ -116,6 +116,12 @@ u8   encoding      (0 = RGB)
 payload = width * height * 3 bytes
 ```
 
+### Preview/live parity fix
+
+The current `PreviewService` instantiates effects at `width=10` while the live renderer uses `internal_width=40` and downsamples. This causes preview/live mismatch for effects that use the extra columns.
+
+**Fix:** `PreviewService.start()` must use the same `internal_width` as the live renderer, then downsample to 10 before streaming. This matches the live render path and keeps the preview faithful.
+
 ### Strip labels and direction indicators
 
 Below the canvas, show:
