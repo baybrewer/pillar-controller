@@ -37,6 +37,11 @@ def create_router(deps, require_auth) -> APIRouter:
   @router.post("/start")
   async def preview_start(req: PreviewStartRequest, auth=Depends(require_auth)):
     svc = _get_preview_service()
+    # Check preview_supported from catalog if available
+    if hasattr(deps, 'effect_catalog') and deps.effect_catalog:
+      meta = deps.effect_catalog.get_meta(req.effect)
+      if meta and not meta.preview_supported:
+        raise HTTPException(400, f"Effect '{req.effect}' does not support preview")
     try:
       svc.start(req.effect, req.params, req.fps)
     except ValueError as e:

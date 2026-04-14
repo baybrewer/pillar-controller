@@ -60,7 +60,7 @@ class PreviewService:
           break
     merged = {**yaml_params, **(params or {})}
 
-    self._effect = effect_cls(width=10, height=N, params=merged)
+    self._effect = effect_cls(width=internal_width, height=N, params=merged)
     self._effect_name = effect_name
     self._fps = max(1, min(fps, 60))
     self._running = True
@@ -75,7 +75,10 @@ class PreviewService:
     logger.info("Preview stopped")
 
   def render_frame(self, state) -> Optional[bytes]:
-    """Render one preview frame and return binary payload with header."""
+    """Render one preview frame and return binary payload with header.
+
+    Matches live render path: render at internal_width, downsample to 10.
+    """
     if not self._running or self._effect is None:
       return None
 
@@ -88,6 +91,11 @@ class PreviewService:
 
     if frame.ndim != 3 or frame.shape[2] != 3:
       return None
+
+    # Downsample to physical width (10) if rendered at internal_width (40)
+    if frame.shape[0] != 10:
+      from ..mapping.cylinder import downsample_width
+      frame = downsample_width(frame, 10)
 
     width = frame.shape[0]
     height = frame.shape[1]
