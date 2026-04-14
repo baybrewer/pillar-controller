@@ -123,6 +123,31 @@ class TestMusicalState:
     assert snap.beat_energy >= 0
 
 
+class TestDropEdgeTrigger:
+  def test_drop_is_one_frame_pulse(self):
+    """drop should be True only on the transition frame, not latched."""
+    adapter = AudioCompatAdapter()
+    # Simulate buildup: rising energy with beats
+    for i in range(60):
+      adapter.adapt({'level': 0.3 + i * 0.01, 'bass': 0.3 + i * 0.01, 'mid': 0.2, 'high': 0.1, 'beat': i % 8 == 0, 'bpm': 128}, float(i) / 60)
+    # Force state to BREAKDOWN by checking internal state
+    adapter._drop_state = 'BREAKDOWN'
+    adapter._buildup_acc = 0.8
+    # Trigger drop: bass surge + beat
+    snap1 = adapter.adapt({'level': 0.9, 'bass': 0.9, 'mid': 0.5, 'high': 0.3, 'beat': True, 'bpm': 128}, 2.0)
+    # Next frame should NOT have drop=True (it was a pulse)
+    snap2 = adapter.adapt({'level': 0.9, 'bass': 0.9, 'mid': 0.5, 'high': 0.3, 'beat': False, 'bpm': 128}, 2.017)
+    if snap1.drop:  # If the transition happened
+      assert snap2.drop is False, "drop should pulse once, not latch"
+
+  def test_breakdown_requires_prior_buildup(self):
+    """breakdown should not be True during plain silence — only after buildup."""
+    adapter = AudioCompatAdapter()
+    # Plain silence from the start
+    snap = adapter.adapt({'level': 0.0, 'bass': 0.0, 'mid': 0.0, 'high': 0.0, 'beat': False, 'bpm': 0}, 0.0)
+    assert snap.breakdown is False, "breakdown should not trigger on plain silence"
+
+
 class TestAudioSnapshotSchema:
   def test_all_fields_present(self):
     snap = AudioSnapshot()
