@@ -33,14 +33,16 @@ def create_router(deps, require_auth, broadcast_state) -> APIRouter:
 
     @router.post("/activate", dependencies=[Depends(require_auth)])
     async def activate_scene(req: SceneRequest):
-        # If params provided, use them; otherwise keep saved params for this effect
-        params = req.params if req.params is not None else deps.state_manager.current_params
-        success = deps.renderer.activate_scene(req.effect, params)
+        success = deps.renderer.activate_scene(req.effect, req.params)
         if success:
             deps.state_manager.current_scene = req.effect
-            deps.state_manager.current_params = params
+            # Persist explicit params; when omitted, save effect's resolved params
+            resolved = req.params if req.params is not None else dict(
+                getattr(deps.renderer.current_effect, 'params', {}) or {}
+            )
+            deps.state_manager.current_params = resolved
             await broadcast_state()
-            return {"status": "ok", "params": params}
+            return {"status": "ok", "params": resolved}
         raise HTTPException(404, f"Unknown effect: {req.effect}")
 
     @router.get("/presets")
