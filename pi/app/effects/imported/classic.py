@@ -85,6 +85,7 @@ class RainbowCycle(Effect):
     _Param("Speed", "speed", 0.1, 5.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 1.0}
+  NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)
@@ -136,6 +137,7 @@ class FeldsteinEquation(Effect):
     _Param("Bar Speed", "bar_speed", 0.2, 4.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 1.0, "bar_speed": 1.0}
+  NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)
@@ -243,6 +245,7 @@ class Feldstein2(Effect):
     _Param("Palette", "palette_idx", 0, 16, 1, 0),
   ]
   _SCALAR_PARAMS = {"speed": 1.0, "fade": 48, "palette_idx": 0}
+  NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)
@@ -345,6 +348,7 @@ class BrettsFavorite(Effect):
     _Param("Damping", "damping", 0.8, 0.99, 0.01, 0.95),
   ]
   _SCALAR_PARAMS = {"speed": 1.0, "bands": 16, "damping": 0.95}
+  NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)
@@ -468,6 +472,7 @@ class Fireplace(Effect):
   _SPARK_MIN = 0.55
   _SPARK_MAX = 1.0
   _MAX_EMBERS = 150
+  NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)

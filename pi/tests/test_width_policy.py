@@ -54,3 +54,14 @@ class TestWidthPolicy:
 
   def test_native_width_10_inherited(self):
     assert WidthTenEffect.NATIVE_WIDTH == 10
+
+
+from app.effects.imported import IMPORTED_EFFECTS
+
+
+class TestImportedWidthPolicy:
+  def test_all_imported_declare_native_width_10(self):
+    """Every imported effect must declare NATIVE_WIDTH = 10."""
+    for name, cls in IMPORTED_EFFECTS.items():
+      assert hasattr(cls, 'NATIVE_WIDTH'), f"{name}: missing NATIVE_WIDTH"
+      assert cls.NATIVE_WIDTH == 10, f"{name}: NATIVE_WIDTH is {cls.NATIVE_WIDTH}, expected 10"

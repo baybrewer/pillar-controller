@@ -50,6 +50,7 @@ class Plasma(Effect):
     _Param("Scale", "scale", 0.2, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 1.0, "scale": 1.0}
+  NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)
@@ -111,6 +112,7 @@ class AuroraBorealis(Effect):
     _Param("Bright", "bright", 0.2, 1.0, 0.05, 0.9),
   ]
   _SCALAR_PARAMS = {"speed": 0.4, "wave": 1.0, "bright": 0.9}
+  NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)
@@ -172,6 +174,7 @@ class LavaLamp(Effect):
     _Param("Size", "size", 0.3, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 0.3, "blobs": 5, "size": 1.0}
+  NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)
@@ -245,6 +248,7 @@ class OceanWaves(Effect):
     _Param("Layers", "layers", 1, 5, 1, 3),
   ]
   _SCALAR_PARAMS = {"speed": 0.6, "depth": 1.0, "layers": 3, "palette": 1}
+  NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
     super().__init__(width, height, params)
