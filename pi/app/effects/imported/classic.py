@@ -441,7 +441,7 @@ class Fireplace(Effect):
   PALETTE_SUPPORT = True
 
   PARAMS = [
-    _Param("Fuel",            "fuel",           0.2, 5.0, 0.1,  1.5),
+    _Param("Fuel",            "fuel",           0.2, 15.0, 0.1,  1.5),
     _Param("Spark Zone",      "spark_zone",     1,   60,   2,    60),
     _Param("Spark Intensity", "spark_prob",     0.0, 1.0, 0.05, 1.0),
     _Param("Cool Base",       "cool_base",      0.0, 0.10, 0.002, 0.012),
@@ -522,8 +522,8 @@ class Fireplace(Effect):
     center = (cols - 1) / 2.0
 
     # Read all params
-    fuel_raw = clampf(self.params.get("fuel", 1.5), 0.2, 5.0)
-    fuel = clampf(fuel_raw / 5.0, 0.04, 1.0)  # normalize to 0-1 for sim
+    fuel_raw = clampf(self.params.get("fuel", 1.5), 0.2, 15.0)
+    fuel = clampf(fuel_raw / 15.0, 0.01, 1.0)  # normalize to 0-1 for sim
     fuel_sq = fuel * fuel
     sz = max(3, int(self.params.get("spark_zone", 60) * (0.2 + fuel * 0.8)))
     spark_prob = self.params.get("spark_prob", 1.0)
