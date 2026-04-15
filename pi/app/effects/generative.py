@@ -36,12 +36,34 @@ def _hsv_array_to_rgb(h: np.ndarray, s: float, v: float) -> np.ndarray:
 
 
 class SolidColor(Effect):
-  """Solid color fill."""
+  """Solid color fill — static or palette cycling.
+
+  speed=0: static color from 'hue' param (0-1).
+  speed>0: cycles through selected palette at that speed.
+  """
 
   def render(self, t: float, state) -> np.ndarray:
-    color = hex_to_rgb(self.params.get('color', '#FF6600'))
+    elapsed = self.elapsed(t)
+    speed = self.params.get('speed', 0.0)
     frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
-    frame[:, :] = color
+
+    if speed == 0:
+      # Static mode — use color param or hue slider
+      color_hex = self.params.get('color', None)
+      if color_hex:
+        color = hex_to_rgb(color_hex)
+      else:
+        hue = self.params.get('hue', 0.0)
+        pal_idx = self.params.get('palette', 0) % NUM_PALETTES
+        color = tuple(pal_color_grid(pal_idx, np.array([hue]))[0])
+      frame[:, :] = color
+    else:
+      # Fade-cycle mode — smoothly cycle through palette
+      pal_idx = self.params.get('palette', 0) % NUM_PALETTES
+      pos = (elapsed * speed * 0.05) % 1.0
+      color = pal_color_grid(pal_idx, np.array([pos]))[0]
+      frame[:, :] = color
+
     return frame
 
 
