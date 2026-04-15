@@ -196,13 +196,13 @@ class Spark(Effect):
       if s['life'] > 0 and int(s['y']) < self.height:
         yi = int(s['y'])
         c = pal_color_grid(pal_idx, np.array([s['hue']]))[0]
-        b = s['life'] * min(2.0, max(0.1, brightness))
+        b = s['life'] * max(0.1, brightness) * 2.5
         frame[s['x'] % self.width, yi] = np.clip(c.astype(np.float32) * b, 0, 255).astype(np.uint8)
         # Tail
         for tail in range(1, 4):
           ty = yi - tail
           if 0 <= ty < self.height:
-            fade = s['life'] * (1 - tail * 0.25) * min(2.0, max(0.1, brightness))
+            fade = s['life'] * (1 - tail * 0.25) * max(0.1, brightness) * 2.5
             if fade > 0:
               frame[s['x'] % self.width, ty] = np.clip(c.astype(np.float32) * fade, 0, 255).astype(np.uint8)
         alive.append(s)

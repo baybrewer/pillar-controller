@@ -104,7 +104,7 @@ class EffectCatalogService:
     'spark': (
       {'name': 'rate', 'label': 'Rate', 'min': 1, 'max': 30, 'step': 1, 'default': 10, 'type': 'slider'},
       {'name': 'speed', 'label': 'Speed', 'min': 0.5, 'max': 5, 'step': 0.1, 'default': 2.0, 'type': 'slider'},
-      {'name': 'brightness', 'label': 'Brightness', 'min': 0.1, 'max': 2, 'step': 0.1, 'default': 1.0, 'type': 'slider'},
+      {'name': 'brightness', 'label': 'Brightness', 'min': 0.1, 'max': 3, 'step': 0.1, 'default': 1.0, 'type': 'slider'},
     ),
     'noise_wash': (
       {'name': 'speed', 'label': 'Speed', 'min': 0, 'max': 1, 'step': 0.05, 'default': 0.5, 'type': 'slider'},
