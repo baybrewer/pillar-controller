@@ -442,10 +442,22 @@ class Fireplace(Effect):
 
   PARAMS = [
     _Param("Fuel",            "fuel",           0.2, 5.0, 0.1,  1.5),
-    _Param("Diffuse Ctr",     "diffuse_center", 0.50, 1.0, 0.02, 0.74),
+    _Param("Spark Zone",      "spark_zone",     1,   60,   2,    60),
     _Param("Spark Intensity", "spark_prob",     0.0, 1.0, 0.05, 1.0),
+    _Param("Cool Base",       "cool_base",      0.0, 0.10, 0.002, 0.012),
+    _Param("Cool Height",     "cool_height",    0.0, 0.20, 0.005, 0.045),
+    _Param("Cool Noise",      "cool_noise",     0.0, 1.0,  0.05, 0.50),
+    _Param("Diffuse Ctr",     "diffuse_center", 0.50, 1.0, 0.02, 0.74),
+    _Param("Diffuse Side",    "diffuse_side",   0.0, 0.25, 0.01, 0.13),
+    _Param("Turb X",          "turb_x_scale",   0.0, 3.0,  0.1,  1.8),
+    _Param("Turb Y Bias",     "turb_y_bias",    0.0, 5.0,  0.1,  2.0),
+    _Param("Turb Y Range",    "turb_y_range",   0.0, 5.0,  0.1,  3.0),
+    _Param("Buoyancy",        "buoyancy",       0.0, 5.0,  0.1,  2.5),
+    _Param("Noise Detail",    "noise_octaves",  1,   3,    1,    2),
+    _Param("Ember Rate",      "ember_rate",     0.0, 1.0,  0.05, 0.20),
+    _Param("Ember Burst",     "ember_burst",    1,   15,   1,    6),
+    _Param("Ember Spread",    "ember_spread",   0.0, 1.2,  0.05, 0.65),
     _Param("Radial",          "radial",         0,   1,   1,    0),
-    # palette is handled via dropdown, not slider
   ]
   _SCALAR_PARAMS = {
     "fuel": 1.5, "spark_zone": 60, "spark_prob": 1.0,
