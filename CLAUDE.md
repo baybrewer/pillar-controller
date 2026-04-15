@@ -58,9 +58,11 @@ code defaults < yaml config files < persisted state (state.json) < live API over
 - `pi/config/effects.yaml` — effect defaults, merged into renderer
 
 ## Deployment
+- **ALWAYS deploy after changes** — no local testing; the hardware is on the Pi. Never claim done without deploying first.
+- Deploy target: `jim@ledfanatic.local` (run `bash pi/scripts/deploy.sh ledfanatic.local`)
 - Canonical source: `/opt/pillar/src/` (both setup.sh and deploy.sh use this)
 - `pip install -e /opt/pillar/src[audio,video]` in `/opt/pillar/venv/`
-- systemd runs `/opt/pillar/venv/bin/pillar`
+- systemd runs `/opt/pillar/venv/bin/pillar` (port 80, not 8000)
 - Hotspot provisioned by setup.sh from system.yaml network config
 
 ## Running locally (dev)
