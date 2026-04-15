@@ -239,10 +239,10 @@ class Feldstein2(Effect):
   PALETTE_SUPPORT = False  # uses internal FELDSTEIN_PALETTES, not standard
 
   PARAMS = [
-    _Param("Speed", "speed", 0.2, 3.0, 0.1, 1.0),
+    _Param("Speed", "speed", 0.04, 0.6, 0.02, 0.2),
     _Param("Fade/Dark", "fade", 10, 200, 5, 48),
   ]
-  _SCALAR_PARAMS = {"speed": 1.0, "fade": 48, "palette_idx": 0}
+  _SCALAR_PARAMS = {"speed": 0.2, "fade": 48, "palette": 0}
   NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
@@ -261,7 +261,7 @@ class Feldstein2(Effect):
     dt_ms = self._calc_dt_ms(t)
     speed = self.params.get("speed", 1.0)
     fade = int(self.params.get("fade", 48))
-    pi = int(self.params.get("palette_idx", 0)) % NUM_FELDSTEIN_PALETTES
+    pi = int(self.params.get("palette", 0)) % NUM_FELDSTEIN_PALETTES
 
     self._elapsed_ms += dt_ms
     time_val = int(self._elapsed_ms * speed) // 7 + self._zo
@@ -441,14 +441,14 @@ class Fireplace(Effect):
   PALETTE_SUPPORT = True
 
   PARAMS = [
-    _Param("Fuel",            "fuel",           0.2, 5.0, 0.1,  0.6),
+    _Param("Fuel",            "fuel",           0.2, 5.0, 0.1,  1.5),
     _Param("Diffuse Ctr",     "diffuse_center", 0.50, 1.0, 0.02, 0.74),
     _Param("Spark Intensity", "spark_prob",     0.0, 1.0, 0.05, 1.0),
     _Param("Radial",          "radial",         0,   1,   1,    0),
     # palette is handled via dropdown, not slider
   ]
   _SCALAR_PARAMS = {
-    "fuel": 0.6, "spark_zone": 60, "spark_prob": 1.0,
+    "fuel": 1.5, "spark_zone": 60, "spark_prob": 1.0,
     "cool_base": 0.012, "cool_height": 0.045, "cool_noise": 0.5,
     "diffuse_center": 0.74, "diffuse_side": 0.13,
     "turb_x_scale": 1.8, "turb_y_bias": 2.0, "turb_y_range": 3.0,
@@ -490,9 +490,9 @@ class Fireplace(Effect):
     xx, yy = np.meshgrid(xs, ys, indexing='ij')  # (width, height)
     dist = np.sqrt(xx ** 2 + yy ** 2)
     max_dist = np.sqrt(cx ** 2 + cy ** 2)
-    # Map distance 0→height-1 (center=bottom of linear fire, edge=top)
+    # Map distance: center=hot (high y in linear fire), edge=cool (low y)
     self._radial_y_lookup = np.clip(
-      (dist / max_dist * height).astype(np.int32), 0, height - 1
+      ((1.0 - dist / max_dist) * (height - 1)).astype(np.int32), 0, height - 1
     )
     self._radial_x_idx = np.arange(width)[:, np.newaxis]  # for advanced indexing
 
@@ -510,7 +510,8 @@ class Fireplace(Effect):
     center = (cols - 1) / 2.0
 
     # Read all params
-    fuel = clampf(self.params.get("fuel", 0.6))
+    fuel_raw = clampf(self.params.get("fuel", 1.5), 0.2, 5.0)
+    fuel = clampf(fuel_raw / 5.0, 0.04, 1.0)  # normalize to 0-1 for sim
     fuel_sq = fuel * fuel
     sz = max(3, int(self.params.get("spark_zone", 60) * (0.2 + fuel * 0.8)))
     spark_prob = self.params.get("spark_prob", 1.0)
@@ -666,9 +667,10 @@ class Fireplace(Effect):
     # ── Render heat (vectorized, palette-driven) ────────────────
     pal_idx = int(self.params.get("palette", 4)) % NUM_PALETTES
     pal_rgb = pal_color_grid(pal_idx, self._heat)  # (cols, rows, 3)
-    # Multiply by heat so zero heat = black
-    heat_scale = self._heat[..., np.newaxis]  # (cols, rows, 1)
-    self.buf.data = (pal_rgb.astype(np.float64) * heat_scale).astype(np.uint8)
+    # Sqrt brightness curve — keeps fire vibrant at mid-heat values
+    # heat=0 → black, heat=0.25 → 50% bright, heat=1 → full bright
+    brightness = np.sqrt(np.maximum(0, self._heat))[..., np.newaxis]
+    self.buf.data = (pal_rgb.astype(np.float64) * brightness).astype(np.uint8)
 
     # ── Render embers (keep scalar — sparse particles) ───────────
     for e in self._embers:

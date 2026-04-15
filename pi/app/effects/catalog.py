@@ -79,15 +79,68 @@ class EffectCatalogService:
     'cylinder_rotate', 'solid_color',
   }
 
+  # UI slider params for generative effects (same format as imported PARAMS)
+  _EFFECT_PARAMS = {
+    'solid_color': (
+      {'name': 'hue', 'label': 'Hue', 'min': 0, 'max': 1, 'step': 0.01, 'default': 0, 'type': 'slider'},
+      {'name': 'speed', 'label': 'Fade Speed', 'min': 0, 'max': 1, 'step': 0.05, 'default': 0, 'type': 'slider'},
+    ),
+    'vertical_gradient': (
+      {'name': 'speed', 'label': 'Speed', 'min': 0, 'max': 0.5, 'step': 0.01, 'default': 0.05, 'type': 'slider'},
+    ),
+    'rainbow_rotate': (
+      {'name': 'speed', 'label': 'Speed', 'min': 0, 'max': 1, 'step': 0.05, 'default': 0.1, 'type': 'slider'},
+      {'name': 'scale', 'label': 'Scale', 'min': 0.1, 'max': 5, 'step': 0.1, 'default': 1.0, 'type': 'slider'},
+    ),
+    'plasma': (
+      {'name': 'speed', 'label': 'Speed', 'min': 0, 'max': 2, 'step': 0.1, 'default': 1.0, 'type': 'slider'},
+      {'name': 'scale', 'label': 'Scale', 'min': 0.5, 'max': 5, 'step': 0.1, 'default': 2.0, 'type': 'slider'},
+    ),
+    'twinkle': (
+      {'name': 'speed', 'label': 'Speed', 'min': 0, 'max': 2, 'step': 0.1, 'default': 1.0, 'type': 'slider'},
+      {'name': 'density', 'label': 'Density', 'min': 0.01, 'max': 0.5, 'step': 0.01, 'default': 0.05, 'type': 'slider'},
+      {'name': 'darkness', 'label': 'Darkness', 'min': 0, 'max': 1, 'step': 0.05, 'default': 0, 'type': 'slider'},
+    ),
+    'spark': (
+      {'name': 'rate', 'label': 'Rate', 'min': 1, 'max': 30, 'step': 1, 'default': 10, 'type': 'slider'},
+      {'name': 'speed', 'label': 'Speed', 'min': 0.5, 'max': 5, 'step': 0.1, 'default': 2.0, 'type': 'slider'},
+      {'name': 'brightness', 'label': 'Brightness', 'min': 0.1, 'max': 2, 'step': 0.1, 'default': 1.0, 'type': 'slider'},
+    ),
+    'noise_wash': (
+      {'name': 'speed', 'label': 'Speed', 'min': 0, 'max': 1, 'step': 0.05, 'default': 0.5, 'type': 'slider'},
+      {'name': 'scale', 'label': 'Scale', 'min': 1, 'max': 5, 'step': 0.1, 'default': 3.0, 'type': 'slider'},
+    ),
+    'color_wipe': (
+      {'name': 'speed', 'label': 'Speed', 'min': 0.1, 'max': 2, 'step': 0.1, 'default': 0.5, 'type': 'slider'},
+    ),
+    'scanline': (
+      {'name': 'speed', 'label': 'Speed', 'min': 0.1, 'max': 2, 'step': 0.1, 'default': 0.5, 'type': 'slider'},
+      {'name': 'width', 'label': 'Width', 'min': 2, 'max': 20, 'step': 1, 'default': 8, 'type': 'slider'},
+    ),
+    'fire': (
+      {'name': 'cooling', 'label': 'Cooling', 'min': 20, 'max': 100, 'step': 5, 'default': 55, 'type': 'slider'},
+      {'name': 'sparking', 'label': 'Sparking', 'min': 50, 'max': 200, 'step': 5, 'default': 120, 'type': 'slider'},
+    ),
+    'sine_bands': (
+      {'name': 'frequency', 'label': 'Frequency', 'min': 1, 'max': 10, 'step': 0.5, 'default': 3.0, 'type': 'slider'},
+      {'name': 'speed', 'label': 'Speed', 'min': 0, 'max': 2, 'step': 0.1, 'default': 1.0, 'type': 'slider'},
+    ),
+    'cylinder_rotate': (
+      {'name': 'speed', 'label': 'Speed', 'min': 0, 'max': 0.5, 'step': 0.01, 'default': 0.1, 'type': 'slider'},
+    ),
+  }
+
   def _build_catalog(self):
     palette_names = tuple(PALETTE_NAMES)
     for name, cls in EFFECTS.items():
       has_palette = name in self._PALETTE_EFFECTS
+      params = self._EFFECT_PARAMS.get(name, ())
       self._catalog[name] = EffectMeta(
         name=name,
         label=_name_to_label(name),
         group='generative',
         description=_get_description(name, cls),
+        params=params,
         palettes=palette_names if has_palette else (),
         palette_support=has_palette,
       )
