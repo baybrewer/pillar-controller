@@ -444,6 +444,7 @@ class Fireplace(Effect):
     _Param("Fuel",            "fuel",           0.2, 5.0, 0.1,  0.6),
     _Param("Diffuse Ctr",     "diffuse_center", 0.50, 1.0, 0.02, 0.74),
     _Param("Spark Intensity", "spark_prob",     0.0, 1.0, 0.05, 1.0),
+    _Param("Radial",          "radial",         0,   1,   1,    0),
     # palette is handled via dropdown, not slider
   ]
   _SCALAR_PARAMS = {
@@ -453,7 +454,7 @@ class Fireplace(Effect):
     "turb_x_scale": 1.8, "turb_y_bias": 2.0, "turb_y_range": 3.0,
     "buoyancy": 2.5, "noise_octaves": 2,
     "ember_rate": 0.20, "ember_burst": 6, "ember_spread": 0.65,
-    "palette": 4,
+    "palette": 4, "radial": 0,
   }
   _FLARE_PROB = 0.025
   _SPARK_MIN = 0.55
@@ -481,6 +482,19 @@ class Fireplace(Effect):
     self._cached_nx = np.zeros((width, height), dtype=np.float64)
     self._cached_ny = np.zeros((width, height), dtype=np.float64)
     self._cached_cn = np.zeros((width, height), dtype=np.float64)
+
+    # Pre-compute radial remap tables (center→edge distance as y-index)
+    cx, cy = width / 2.0, height / 2.0
+    xs = np.arange(width, dtype=np.float64) - cx
+    ys = np.arange(height, dtype=np.float64) - cy
+    xx, yy = np.meshgrid(xs, ys, indexing='ij')  # (width, height)
+    dist = np.sqrt(xx ** 2 + yy ** 2)
+    max_dist = np.sqrt(cx ** 2 + cy ** 2)
+    # Map distance 0→height-1 (center=bottom of linear fire, edge=top)
+    self._radial_y_lookup = np.clip(
+      (dist / max_dist * height).astype(np.int32), 0, height - 1
+    )
+    self._radial_x_idx = np.arange(width)[:, np.newaxis]  # for advanced indexing
 
     # Warm up the spark zone
     spark_zone = int(self.params.get("spark_zone", 60))
@@ -669,6 +683,11 @@ class Fireplace(Effect):
                          int(ec[0] * b * 1.4),
                          int(ec[1] * b * 1.1),
                          int(ec[2] * b * 0.4))
+
+    # ── Radial remap: fire radiates outward from center ───────
+    if int(self.params.get("radial", 0)):
+      linear_frame = self.buf.data  # (cols, rows, 3)
+      self.buf.data = linear_frame[self._radial_x_idx, self._radial_y_lookup]
 
     return self.buf.get_frame()
 
