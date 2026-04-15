@@ -98,3 +98,27 @@ class TestAddPointsBatched:
     rgbs = np.array([[100, 100, 100]], dtype=np.uint8)
     buf.add_points(xs, ys, rgbs)
     assert tuple(buf.data[0, 0]) == (150, 150, 150)
+
+
+class TestSpectralGlowPerformance:
+  def test_120_frames_under_budget(self):
+    """SpectralGlow at width 40 should average under 1.5ms per frame."""
+    import time
+    from app.effects.audio_reactive import SpectralGlow
+    from unittest.mock import MagicMock
+    state = MagicMock()
+    state.audio_bass = 0.8
+    state.audio_mid = 0.6
+    state.audio_high = 0.4
+    eff = SpectralGlow(width=40, height=172)
+    t = time.monotonic()
+    times = []
+    for _ in range(120):
+      start = time.perf_counter()
+      frame = eff.render(t, state)
+      times.append(time.perf_counter() - start)
+      t += 0.017
+    avg_ms = sum(times) / len(times) * 1000
+    assert frame.shape == (40, 172, 3)
+    assert frame.dtype == np.uint8
+    assert avg_ms < 1.5, f"SpectralGlow avg {avg_ms:.2f}ms exceeds 1.5ms budget"
