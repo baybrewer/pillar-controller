@@ -456,26 +456,47 @@ class MatrixRain(Effect):
     dead = active & ((heads - trail) >= rows)
     self._active_mask[dead] = False
 
-    # --- Draw trails ---
+    # --- Draw trails (vectorized) ---
     # Build the palette LUT once per frame
     fade_lut = np.arange(trail, dtype=np.float64)
     fade_factors = (1.0 - fade_lut / trail) ** 1.5  # (trail,)
-    pal_colors = pal_color_grid(pal_idx, fade_factors)  # (trail, 3) uint8
+    pal_colors = pal_color_grid(pal_idx, fade_factors).astype(np.float64)  # (trail, 3)
 
     active_indices = np.where(self._active_mask)[0]
-    for idx in active_indices:
-      head = int(self._drop_y[idx])
-      bright = self._drop_bright[idx]
-      dx = self._drop_x[idx]
-      for ty in range(trail):
-        py = head - ty
-        if 0 <= py < rows:
-          c = pal_colors[ty]
-          b = fade_factors[ty] * bright
-          d = self.buf.data[dx, py]
-          d[0] = min(255, int(d[0]) + int(c[0] * b))
-          d[1] = min(255, int(d[1]) + int(c[1] * b))
-          d[2] = min(255, int(d[2]) + int(c[2] * b))
+    n_active = len(active_indices)
+    if n_active > 0:
+      # Build all (drop, trail_offset) pixel coordinates at once
+      a_heads = self._drop_y[active_indices].astype(np.int32)  # (n,)
+      a_brights = self._drop_bright[active_indices]  # (n,)
+      a_xs = self._drop_x[active_indices]  # (n,)
+      trail_offsets = np.arange(trail, dtype=np.int32)  # (trail,)
+
+      # (n, trail) grids
+      py_grid = a_heads[:, np.newaxis] - trail_offsets[np.newaxis, :]
+      valid = (py_grid >= 0) & (py_grid < rows)
+
+      # Brightness per (drop, trail_offset): fade_factors[ty] * drop_bright
+      bright_grid = fade_factors[np.newaxis, :] * a_brights[:, np.newaxis]  # (n, trail)
+
+      # Scaled palette colors: pal_colors[ty] * bright_grid[drop, ty]
+      # pal_colors is (trail, 3), bright_grid is (n, trail)
+      # rgb_grid: (n, trail, 3)
+      rgb_grid = (pal_colors[np.newaxis, :, :] * bright_grid[:, :, np.newaxis]).astype(np.int32)
+
+      # Extract valid pixels and write into buffer
+      drop_idx, trail_idx = np.where(valid)
+      xs = a_xs[drop_idx]
+      ys = py_grid[drop_idx, trail_idx]
+      rgbs = rgb_grid[drop_idx, trail_idx]  # (M, 3) int32
+
+      # Additive blend with clamp via numpy.add.at then clip
+      # Use uint16 scratch to avoid overflow
+      buf16 = self.buf.data.astype(np.uint16)
+      np.add.at(buf16, (xs, ys, 0), rgbs[:, 0].astype(np.uint16))
+      np.add.at(buf16, (xs, ys, 1), rgbs[:, 1].astype(np.uint16))
+      np.add.at(buf16, (xs, ys, 2), rgbs[:, 2].astype(np.uint16))
+      np.clip(buf16, 0, 255, out=buf16)
+      self.buf.data[:] = buf16.astype(np.uint8)
 
     return self.buf.get_frame()
 
