@@ -131,13 +131,13 @@ class FeldsteinEquation(Effect):
   CATEGORY = "classic"
   DISPLAY_NAME = "Feldstein Equation"
   DESCRIPTION = "Cylinder-wrapped noise with alternating barber-pole scrolling"
-  PALETTE_SUPPORT = False
+  PALETTE_SUPPORT = True
 
   PARAMS = [
     _Param("Speed", "speed", 0.2, 3.0, 0.1, 1.0),
     _Param("Bar Speed", "bar_speed", 0.2, 4.0, 0.1, 1.0),
   ]
-  _SCALAR_PARAMS = {"speed": 1.0, "bar_speed": 1.0}
+  _SCALAR_PARAMS = {"speed": 1.0, "bar_speed": 1.0, "palette": 0}
   NATIVE_WIDTH = 10
 
   def __init__(self, width=10, height=N, params=None):
@@ -156,6 +156,7 @@ class FeldsteinEquation(Effect):
     dt_ms = self._calc_dt_ms(t)
     speed = self.params.get("speed", 1.0)
     bar_speed = self.params.get("bar_speed", 1.0)
+    pal_idx = int(self.params.get("palette", 0)) % NUM_PALETTES
 
     self._elapsed_ms += dt_ms
     time_s = self._elapsed_ms * speed * 0.001
@@ -197,17 +198,14 @@ class FeldsteinEquation(Effect):
       cx_grid = cx[:, np.newaxis] * np.ones(rows)
       sy_grid = sy[:, np.newaxis] * np.ones(rows)
       noise = perlin_grid(cx_grid, sy_grid, z_vals)  # (cols, rows)
-      vals = np.clip(np.maximum(0, noise) * v_mult, 0, 255).astype(np.uint8)
+      vals = np.clip(np.maximum(0, noise) * v_mult, 0, 255).astype(np.float64)
 
-      # HSV to RGB for this layer (vectorized)
-      hue = (h + h_off) & 255
-      layer_rgb = np.zeros((cols, rows, 3), dtype=np.uint8)
-      # Fast approximate: use hsv2rgb for the single hue, vary only V
-      r_c, g_c, b_c = hsv2rgb(hue, 255, 255)
-      if r_c + g_c + b_c > 0:
-        layer_rgb[..., 0] = (vals.astype(np.uint16) * r_c // 255).astype(np.uint8)
-        layer_rgb[..., 1] = (vals.astype(np.uint16) * g_c // 255).astype(np.uint8)
-        layer_rgb[..., 2] = (vals.astype(np.uint16) * b_c // 255).astype(np.uint8)
+      # Compute hue for this layer, normalize to 0-1 for palette lookup
+      hue_norm = np.full_like(vals, ((h + h_off) & 255) / 255.0)
+      # Get palette color and scale by noise intensity
+      pal_rgb = pal_color_grid(pal_idx, hue_norm)  # (cols, rows, 3) uint8
+      intensity = (vals / 255.0)[..., np.newaxis]  # (cols, rows, 1)
+      layer_rgb = (pal_rgb.astype(np.float64) * intensity).astype(np.uint8)
 
       # Additive blend into buffer
       self.buf.data = np.clip(
@@ -440,33 +438,22 @@ class Fireplace(Effect):
   CATEGORY = "classic"
   DISPLAY_NAME = "Fireplace"
   DESCRIPTION = "Warm flickering fireplace with ember particles and heat convection"
-  PALETTE_SUPPORT = False
+  PALETTE_SUPPORT = True
 
   PARAMS = [
-    _Param("** FUEL **",   "fuel",           0.0, 1.0,  0.05, 0.6),
-    _Param("Spark Zone",   "spark_zone",     1,   60,   2,    35),
-    _Param("Spark Prob",   "spark_prob",     0.0, 1.0,  0.05, 0.85),
-    _Param("Cool Base",    "cool_base",      0.0, 0.10, 0.002, 0.012),
-    _Param("Cool Height",  "cool_height",    0.0, 0.20, 0.005, 0.045),
-    _Param("Cool Noise",   "cool_noise",     0.0, 1.0,  0.05, 0.50),
-    _Param("Diffuse Ctr",  "diffuse_center", 0.50, 1.0, 0.02, 0.74),
-    _Param("Diffuse Side", "diffuse_side",   0.0, 0.25, 0.01, 0.13),
-    _Param("Turb X",       "turb_x_scale",   0.0, 3.0,  0.1,  1.8),
-    _Param("Turb Y Bias",  "turb_y_bias",    0.0, 5.0,  0.1,  2.0),
-    _Param("Turb Y Range", "turb_y_range",   0.0, 5.0,  0.1,  3.0),
-    _Param("Buoyancy",     "buoyancy",       0.0, 5.0,  0.1,  2.5),
-    _Param("Noise Detail", "noise_octaves",  1,   3,    1,    2),
-    _Param("Ember Rate",   "ember_rate",     0.0, 1.0,  0.05, 0.20),
-    _Param("Ember Burst",  "ember_burst",    1,   15,   1,    6),
-    _Param("Ember Spread", "ember_spread",   0.0, 1.2,  0.05, 0.65),
+    _Param("Fuel",            "fuel",           0.2, 5.0, 0.1,  0.6),
+    _Param("Diffuse Ctr",     "diffuse_center", 0.50, 1.0, 0.02, 0.74),
+    _Param("Spark Intensity", "spark_prob",     0.0, 1.0, 0.05, 1.0),
+    # palette is handled via dropdown, not slider
   ]
   _SCALAR_PARAMS = {
-    "fuel": 0.6, "spark_zone": 35, "spark_prob": 0.85,
-    "cool_base": 0.012, "cool_height": 0.045, "cool_noise": 0.50,
+    "fuel": 0.6, "spark_zone": 60, "spark_prob": 1.0,
+    "cool_base": 0.012, "cool_height": 0.045, "cool_noise": 0.5,
     "diffuse_center": 0.74, "diffuse_side": 0.13,
     "turb_x_scale": 1.8, "turb_y_bias": 2.0, "turb_y_range": 3.0,
     "buoyancy": 2.5, "noise_octaves": 2,
     "ember_rate": 0.20, "ember_burst": 6, "ember_spread": 0.65,
+    "palette": 4,
   }
   _FLARE_PROB = 0.025
   _SPARK_MIN = 0.55

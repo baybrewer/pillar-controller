@@ -511,14 +511,30 @@ function initAudio() {
 // --- Diagnostics ---
 
 function initDiagnostics() {
+  let activeTest = null;
+
   document.querySelectorAll('.test-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      api('POST', '/api/diagnostics/test-pattern', { pattern: btn.dataset.test });
+    btn.addEventListener('click', async () => {
+      const pattern = btn.dataset.test;
+      if (activeTest === pattern) {
+        // Deactivate: click the already-active button
+        await api('POST', '/api/diagnostics/clear');
+        btn.classList.remove('active');
+        activeTest = null;
+      } else {
+        // Activate new pattern (clears previous if any)
+        await api('POST', '/api/diagnostics/test-pattern', { pattern });
+        document.querySelectorAll('.test-btn.active').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeTest = pattern;
+      }
     });
   });
 
-  document.getElementById('diag-clear-btn').addEventListener('click', () => {
-    api('POST', '/api/diagnostics/clear');
+  document.getElementById('diag-clear-btn').addEventListener('click', async () => {
+    await api('POST', '/api/diagnostics/clear');
+    document.querySelectorAll('.test-btn.active').forEach(b => b.classList.remove('active'));
+    activeTest = null;
   });
 }
 
