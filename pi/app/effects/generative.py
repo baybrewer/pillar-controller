@@ -195,16 +195,20 @@ class Spark(Effect):
       s['life'] -= 0.01
       if s['life'] > 0 and int(s['y']) < self.height:
         yi = int(s['y'])
-        c = pal_color_grid(pal_idx, np.array([s['hue']]))[0]
-        b = s['life'] * max(0.1, brightness) * 2.5
-        frame[s['x'] % self.width, yi] = np.clip(c.astype(np.float32) * b, 0, 255).astype(np.uint8)
-        # Tail
+        # Palette color at a bright position (0.4-0.8 avoids dark edges)
+        pal_pos = 0.4 + s['hue'] * 0.4
+        c = pal_color_grid(pal_idx, np.array([pal_pos]))[0].astype(np.float32)
+        b = s['life'] * max(0.1, brightness)
+        # Spark head: blend toward white for hot bright core
+        head_color = c * 0.3 + np.array([255, 255, 255], dtype=np.float32) * 0.7
+        frame[s['x'] % self.width, yi] = np.clip(head_color * b, 0, 255).astype(np.uint8)
+        # Tail: palette color, fading
         for tail in range(1, 4):
           ty = yi - tail
           if 0 <= ty < self.height:
-            fade = s['life'] * (1 - tail * 0.25) * max(0.1, brightness) * 2.5
+            fade = s['life'] * (1 - tail * 0.25) * max(0.1, brightness)
             if fade > 0:
-              frame[s['x'] % self.width, ty] = np.clip(c.astype(np.float32) * fade, 0, 255).astype(np.uint8)
+              frame[s['x'] % self.width, ty] = np.clip(c * fade, 0, 255).astype(np.uint8)
         alive.append(s)
     self._sparks = alive[-200:]
     return frame
