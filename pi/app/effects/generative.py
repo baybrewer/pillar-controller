@@ -50,14 +50,15 @@ class VerticalGradient(Effect):
 
   def render(self, t: float, state) -> np.ndarray:
     elapsed = self.elapsed(t)
-    speed = self.params.get('speed', 0.5)
-    frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
+    speed = self.params.get('speed', 0.05)
+    pal_idx = self.params.get('palette', 0) % NUM_PALETTES
 
-    for y in range(self.height):
-      pos = (y / self.height + elapsed * speed) % 1.0
-      r, g, b = hsv_to_rgb(pos, 1.0, 1.0)
-      frame[:, y] = (r, g, b)
-    return frame
+    ys = np.arange(self.height, dtype=np.float64) / self.height
+    pos = (ys + elapsed * speed) % 1.0  # (height,)
+
+    # Broadcast to (width, height) and lookup palette
+    pos_2d = np.broadcast_to(pos[np.newaxis, :], (self.width, self.height))
+    return pal_color_grid(pal_idx, pos_2d)
 
 
 class RainbowRotate(Effect):
@@ -67,14 +68,14 @@ class RainbowRotate(Effect):
     elapsed = self.elapsed(t)
     speed = self.params.get('speed', 1.0)
     scale = self.params.get('scale', 1.0)
+    pal_idx = self.params.get('palette', 0) % NUM_PALETTES
 
     xs = np.arange(self.width, dtype=np.float64) / self.width * scale
     ys = np.arange(self.height, dtype=np.float64) / self.height * 0.3
     xx, yy = np.meshgrid(xs, ys, indexing='ij')
     hue = (xx + yy + elapsed * speed * 0.1) % 1.0
 
-    frame = _hsv_array_to_rgb(hue, 1.0, 1.0)
-    return frame
+    return pal_color_grid(pal_idx, hue)
 
 
 class Plasma(Effect):
@@ -84,13 +85,12 @@ class Plasma(Effect):
     elapsed = self.elapsed(t)
     speed = self.params.get('speed', 1.0)
     scale = self.params.get('scale', 2.0)
+    pal_idx = self.params.get('palette', 0) % NUM_PALETTES
 
     tt = elapsed * speed
 
-    # Use vectorized numpy for performance
     xs = np.arange(self.width, dtype=np.float64) / self.width * scale * math.pi * 2
     ys = np.arange(self.height, dtype=np.float64) / self.height * scale * math.pi * 2
-
     xx, yy = np.meshgrid(xs, ys, indexing='ij')
 
     v1 = np.sin(xx + tt)
@@ -98,10 +98,10 @@ class Plasma(Effect):
     v3 = np.sin(xx + yy + tt * 0.5)
     v4 = np.sin(np.sqrt(xx**2 + yy**2) + tt * 1.3)
 
-    v = (v1 + v2 + v3 + v4) / 4.0  # -1 to 1
-    hue = (v + 1.0) / 2.0  # 0 to 1
+    v = (v1 + v2 + v3 + v4) / 4.0
+    hue = (v + 1.0) / 2.0
 
-    return _hsv_array_to_rgb(hue, 0.9, 1.0)
+    return pal_color_grid(pal_idx, hue)
 
 
 class Twinkle(Effect):
@@ -191,18 +191,18 @@ class NoiseWash(Effect):
     elapsed = self.elapsed(t)
     speed = self.params.get('speed', 0.5)
     scale = self.params.get('scale', 3.0)
+    pal_idx = self.params.get('palette', 0) % NUM_PALETTES
 
     nx = np.arange(self.width, dtype=np.float64) / self.width * scale
     ny = np.arange(self.height, dtype=np.float64) / self.height * scale
     nxx, nyy = np.meshgrid(nx, ny, indexing='ij')
 
-    # Sine-based noise approximation
     v = (np.sin(nxx * 2.1 + elapsed * speed) +
          np.sin(nyy * 1.7 + elapsed * speed * 0.8) +
          np.sin((nxx + nyy) * 1.3 + elapsed * speed * 0.6)) / 3.0
     hue = (v + 1.0) / 2.0
 
-    return _hsv_array_to_rgb(hue, 0.8, 0.9)
+    return pal_color_grid(pal_idx, hue)
 
 
 class ColorWipe(Effect):
@@ -310,38 +310,20 @@ class SineBands(Effect):
     elapsed = self.elapsed(t)
     freq = self.params.get('frequency', 3.0)
     speed = self.params.get('speed', 1.0)
+    pal_idx = self.params.get('palette', 0) % NUM_PALETTES
 
     ys = np.arange(self.height, dtype=np.float64)
-    v = (np.sin(ys / self.height * freq * math.pi * 2 + elapsed * speed) + 1.0) / 2.0
+    hue_1d = (np.sin(ys / self.height * freq * math.pi * 2 + elapsed * speed) + 1.0) / 2.0
 
-    # v is both hue and value; need shape (width, height) for the helper
-    # SineBands is uniform across x, so broadcast after computing 1D
-    hue_1d = v  # shape: (height,)
+    # Broadcast to (width, height)
+    hue_2d = np.broadcast_to(hue_1d[np.newaxis, :], (self.width, self.height))
 
-    # Use _hsv_array_to_rgb on a 2D array to get (width, height, 3)
-    hue_2d = np.broadcast_to(hue_1d[np.newaxis, :], (self.width, self.height)).copy()
+    # Palette lookup gives us the color; modulate brightness with the sine
+    rgb = pal_color_grid(pal_idx, hue_2d)
 
-    # For SineBands, s=1.0 and v varies per row — need per-pixel v
-    # _hsv_array_to_rgb takes scalar v, so we do this manually
-    h = hue_2d % 1.0
-    i = (h * 6.0).astype(int) % 6
-    f = h * 6.0 - (h * 6.0).astype(int)
-    val = np.broadcast_to(v[np.newaxis, :], (self.width, self.height))
-
-    s = 1.0
-    p = val * (1.0 - s)
-    q = val * (1.0 - s * f)
-    t_val = val * (1.0 - s * (1.0 - f))
-
-    rc = np.where(i == 0, val, np.where(i == 1, q, np.where(i == 2, p, np.where(i == 3, p, np.where(i == 4, t_val, val)))))
-    gc = np.where(i == 0, t_val, np.where(i == 1, val, np.where(i == 2, val, np.where(i == 3, q, np.where(i == 4, p, p)))))
-    bc = np.where(i == 0, p, np.where(i == 1, p, np.where(i == 2, t_val, np.where(i == 3, val, np.where(i == 4, val, q)))))
-
-    frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
-    frame[..., 0] = (rc * 255).astype(np.uint8)
-    frame[..., 1] = (gc * 255).astype(np.uint8)
-    frame[..., 2] = (bc * 255).astype(np.uint8)
-    return frame
+    # Apply brightness modulation — brighter at sine peaks
+    brightness = np.broadcast_to(hue_1d[np.newaxis, :], (self.width, self.height))
+    return (rgb.astype(np.float32) * brightness[..., np.newaxis]).astype(np.uint8)
 
 
 class CylinderRotate(Effect):
@@ -350,33 +332,17 @@ class CylinderRotate(Effect):
   def render(self, t: float, state) -> np.ndarray:
     elapsed = self.elapsed(t)
     speed = self.params.get('speed', 1.0)
+    pal_idx = self.params.get('palette', 0) % NUM_PALETTES
 
     xs = np.arange(self.width, dtype=np.float64) / self.width
     ys = np.arange(self.height, dtype=np.float64)
     xx, yy = np.meshgrid(xs, ys, indexing='ij')
 
     hue = (xx + elapsed * speed * 0.1) % 1.0
-    val = (np.sin(yy / self.height * math.pi * 4 + elapsed) + 1.0) / 2.0
+    brightness = (np.sin(yy / self.height * math.pi * 4 + elapsed) + 1.0) / 2.0
 
-    # Per-pixel v requires manual vectorized HSV→RGB
-    s = 0.9
-    h = hue % 1.0
-    i = (h * 6.0).astype(int) % 6
-    f = h * 6.0 - (h * 6.0).astype(int)
-
-    p = val * (1.0 - s)
-    q = val * (1.0 - s * f)
-    t_val = val * (1.0 - s * (1.0 - f))
-
-    rc = np.where(i == 0, val, np.where(i == 1, q, np.where(i == 2, p, np.where(i == 3, p, np.where(i == 4, t_val, val)))))
-    gc = np.where(i == 0, t_val, np.where(i == 1, val, np.where(i == 2, val, np.where(i == 3, q, np.where(i == 4, p, p)))))
-    bc = np.where(i == 0, p, np.where(i == 1, p, np.where(i == 2, t_val, np.where(i == 3, val, np.where(i == 4, val, q)))))
-
-    frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
-    frame[..., 0] = (rc * 255).astype(np.uint8)
-    frame[..., 1] = (gc * 255).astype(np.uint8)
-    frame[..., 2] = (bc * 255).astype(np.uint8)
-    return frame
+    rgb = pal_color_grid(pal_idx, hue)
+    return (rgb.astype(np.float32) * brightness[..., np.newaxis]).astype(np.uint8)
 
 
 class SeamPulse(Effect):
