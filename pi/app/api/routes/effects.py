@@ -27,6 +27,7 @@ def create_router(deps) -> APIRouter:
     return {
       'effects': {name: meta.to_dict() for name, meta in catalog.items()},
       'current': deps.render_state.current_scene,
+      'current_params': deps.state_manager.current_params,
     }
 
   @router.get("/{name}")

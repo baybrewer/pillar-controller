@@ -223,6 +223,11 @@ async function loadEffects() {
   if (!data) return;
   effectsCatalog = data.effects;
 
+  // Restore saved params from state.json
+  if (data.current_params && Object.keys(data.current_params).length > 0) {
+    currentEffectParams = { ...data.current_params };
+  }
+
   // Build categorized list
   const categorized = [];
   for (const [name, info] of Object.entries(data.effects)) {
