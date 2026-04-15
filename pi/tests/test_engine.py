@@ -141,12 +141,11 @@ class TestBuffer:
     assert frame.shape == (10, 172, 3)
     assert frame.dtype == np.uint8
 
-  def test_get_frame_is_copy(self):
+  def test_get_frame_is_same_array(self):
     buf = LEDBuffer(10, 172)
     buf.set_led(0, 0, 255, 0, 0)
     frame = buf.get_frame()
-    frame[0, 0] = [0, 0, 0]
-    assert buf.data[0, 0, 0] == 255  # original unchanged
+    assert frame is buf.data  # no-copy: returns backing array directly
 
   def test_persistent_state(self):
     """Buffer persists across multiple operations (no auto-clear)."""

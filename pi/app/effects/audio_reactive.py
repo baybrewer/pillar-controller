@@ -6,6 +6,7 @@ import math
 import numpy as np
 
 from .base import Effect, hsv_to_rgb, hex_to_rgb
+from .generative import _hsv_array_to_rgb
 from ..mapping.cylinder import N
 
 
@@ -114,30 +115,38 @@ class SpectralGlow(Effect):
 
   def render(self, t: float, state) -> np.ndarray:
     elapsed = self.elapsed(t)
-    smoothing = self.params.get('smoothing', 0.8)
     frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
 
-    # Distribute frequency bands across columns
     bands = [state.audio_bass, state.audio_mid, state.audio_high]
 
-    for x in range(self.width):
-      # Map column to a frequency band with interpolation
-      band_pos = x / self.width * (len(bands) - 1)
-      band_idx = int(band_pos)
-      frac = band_pos - band_idx
-      if band_idx >= len(bands) - 1:
-        level = bands[-1]
-      else:
-        level = bands[band_idx] * (1 - frac) + bands[band_idx + 1] * frac
+    # Compute per-column fill heights via interpolation
+    col_pos = np.arange(self.width, dtype=np.float64) / self.width * (len(bands) - 1)
+    band_idx = np.minimum(col_pos.astype(np.int32), len(bands) - 2)
+    frac = col_pos - band_idx
+    band_arr = np.array(bands, dtype=np.float64)
+    levels = band_arr[band_idx] * (1 - frac) + band_arr[band_idx + 1] * frac
+    fill_heights = (levels * self.height).astype(np.int32)  # (width,)
 
-      fill_h = int(level * self.height)
-      hue = (x / self.width + elapsed * 0.05) % 1.0
+    # Per-column hue
+    hue_base = (np.arange(self.width, dtype=np.float64) / self.width + elapsed * 0.05) % 1.0
 
-      for y in range(fill_h):
-        fade = 1.0 - y / self.height * 0.5
-        r, g, b = hsv_to_rgb(hue, 0.8, fade)
-        frame[x, y] = (r, g, b)
+    # Build a mask of which pixels are lit: pixel (x, y) is lit if y < fill_heights[x]
+    y_grid = np.arange(self.height, dtype=np.int32)[np.newaxis, :]  # (1, height)
+    fill_grid = fill_heights[:, np.newaxis]  # (width, 1)
+    lit_mask = y_grid < fill_grid  # (width, height)
 
+    # Compute brightness fade: 1.0 - y/height * 0.5
+    y_frac = np.arange(self.height, dtype=np.float64) / self.height
+    fade = 1.0 - y_frac * 0.5  # (height,)
+
+    # Vectorized HSV->RGB for the full grid
+    hue_grid = np.broadcast_to(hue_base[:, np.newaxis], (self.width, self.height))
+    rgb = _hsv_array_to_rgb(hue_grid, 0.8, 1.0)  # (width, height, 3)
+
+    # Apply fade as brightness
+    rgb_faded = (rgb.astype(np.float32) * fade[np.newaxis, :, np.newaxis]).astype(np.uint8)
+
+    frame[lit_mask] = rgb_faded[lit_mask]
     return frame
 
 
