@@ -433,7 +433,7 @@ class BrettsFavorite(Effect):
 
 class Fireplace(Effect):
   """Full fire simulation with heat convection, ember particles,
-  noise-driven turbulence, and 16 tunable parameters."""
+  noise-driven turbulence, and palette-driven coloring."""
 
   CATEGORY = "classic"
   DISPLAY_NAME = "Fireplace"
@@ -649,8 +649,12 @@ class Fireplace(Effect):
         alive.append(e)
     self._embers = alive
 
-    # ── Render heat (vectorized) ─────────────────────────────────
-    self.buf.data = fire_color_grid(self._heat)
+    # ── Render heat (vectorized, palette-driven) ────────────────
+    pal_idx = int(self.params.get("palette", 4)) % NUM_PALETTES
+    pal_rgb = pal_color_grid(pal_idx, self._heat)  # (cols, rows, 3)
+    # Multiply by heat so zero heat = black
+    heat_scale = self._heat[..., np.newaxis]  # (cols, rows, 1)
+    self.buf.data = (pal_rgb.astype(np.float64) * heat_scale).astype(np.uint8)
 
     # ── Render embers (keep scalar — sparse particles) ───────────
     for e in self._embers:
@@ -660,7 +664,7 @@ class Fireplace(Effect):
         af = max(0.0, e.life / e.max_life)
         fl = 0.65 + 0.35 * math.sin(e.flicker_phase)
         b = e.brightness * af * fl
-        ec = fire_color(min(1.0, af * 0.45 + 0.15))
+        ec = pal_color(pal_idx, min(1.0, af * 0.45 + 0.15))
         self.buf.add_led(ecol, erow,
                          int(ec[0] * b * 1.4),
                          int(ec[1] * b * 1.1),
