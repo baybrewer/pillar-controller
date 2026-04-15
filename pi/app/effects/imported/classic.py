@@ -17,6 +17,7 @@ from ..engine.color import hsv2rgb, clamp, clampf, qsub8, qadd8, scale8
 from ..engine.palettes import (
   FELDSTEIN_PALETTES, NUM_FELDSTEIN_PALETTES,
   fire_color, pal_color, fire_color_grid, pal_color_grid,
+  NUM_PALETTES,
 )
 from ...mapping.cylinder import N
 
@@ -242,7 +243,6 @@ class Feldstein2(Effect):
   PARAMS = [
     _Param("Speed", "speed", 0.2, 3.0, 0.1, 1.0),
     _Param("Fade/Dark", "fade", 10, 200, 5, 48),
-    _Param("Palette", "palette_idx", 0, 16, 1, 0),
   ]
   _SCALAR_PARAMS = {"speed": 1.0, "fade": 48, "palette_idx": 0}
   NATIVE_WIDTH = 10

@@ -141,7 +141,8 @@ class Twinkle(Effect):
     darkness = self.params.get('darkness', 0.0)
     pal_idx = self.params.get('palette', 0) % NUM_PALETTES
 
-    brightness = (np.sin(self._stars * 3.0 + elapsed * speed * 2.0) + 1.0) / 2.0
+    # Each star twinkles at its own rate — no global phase shift
+    brightness = (np.sin(self._stars * 3.0 + self._stars * elapsed * speed * 0.5) + 1.0) / 2.0
     mask = self._rng.random((self.width, self.height)) < density
     visible = (brightness > 0.7) | mask
 
@@ -342,8 +343,9 @@ class Fire(Effect):
       y = self._rng.integers(0, min(7, self.height))
       self._heat[x, y] = min(1.0, self._heat[x, y] + 0.4 + self._rng.random() * 0.4)
 
-    # Palette-based color mapping — heat value (0-1) maps to palette position
-    frame = pal_color_grid(pal_idx, self._heat)
+    # Palette-based color, with heat as brightness envelope
+    rgb = pal_color_grid(pal_idx, self._heat)
+    frame = (rgb.astype(np.float32) * self._heat[..., np.newaxis]).astype(np.uint8)
 
     # Flip vertically — heat sim uses y=0 as hot base, but physical pillar
     # needs hot pixels at high y (bottom of display)
