@@ -911,14 +911,14 @@ function renderStripTable(strips) {
 
     tr.innerHTML = `
       <td class="strip-id">${s.id}</td>
-      <td><input type="number" data-strip="${s.id}" data-field="channel" value="${s.channel}" min="0" max="7" step="1"></td>
-      <td><input type="number" data-strip="${s.id}" data-field="offset" value="${s.offset}" min="0" max="1100" step="1"></td>
+      <td><input type="number" class="ch-input" data-strip="${s.id}" data-field="channel" value="${s.channel}" min="0" max="7" step="1"></td>
+      <td><input type="number" class="ofs-input" data-strip="${s.id}" data-field="offset" value="${s.offset}" min="0" max="1100" step="1"></td>
       <td><select data-strip="${s.id}" data-field="direction">${dirOpts}</select></td>
       <td><input type="number" data-strip="${s.id}" data-field="led_count" value="${s.led_count}" min="1" max="1100" step="1"></td>
       <td><select data-strip="${s.id}" data-field="color_order">${colorOpts}</select></td>
       <td><input type="range" data-strip="${s.id}" data-field="brightness" value="${s.brightness != null ? s.brightness : 1}" min="0" max="1" step="0.05" class="dim-slider" title="${Math.round((s.brightness != null ? s.brightness : 1) * 100)}%"></td>
       <td class="strip-actions">
-        <button class="test-btn" data-strip="${s.id}">Test</button>
+        <button class="test-btn" data-strip="${s.id}">T</button>
         <button class="del-btn" data-strip="${s.id}">\u2715</button>
       </td>
     `;

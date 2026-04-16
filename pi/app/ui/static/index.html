@@ -280,16 +280,20 @@
                 <p>Each strip is placed on a channel at an LED offset. Set direction to match wiring (bottom-to-top or top-to-bottom). Color order must match your LED chipset (usually BGR for WS2812B). Use the Test button to light up a strip for identification. Changes apply immediately.</p>
               </div>
             </div>
+            <h3>Channel Layout</h3>
+            <canvas id="mapping-diagram" width="400" height="300"></canvas>
+
             <div class="setup-layout">
               <div class="setup-main">
-            <h3>Strip Mapping</h3>
+            <h3 style="margin-top:16px;">Strip Mapping</h3>
             <div id="strip-status" class="status-msg"></div>
+            <div class="strip-table-wrap">
             <table id="strip-table">
               <thead>
                 <tr>
                   <th>#</th>
                   <th>Ch</th>
-                  <th>Offset</th>
+                  <th>Ofs</th>
                   <th>Dir</th>
                   <th>LEDs</th>
                   <th>Color</th>
@@ -299,10 +303,8 @@
               </thead>
               <tbody id="strip-rows"></tbody>
             </table>
+            </div>
             <button id="add-strip-btn" class="action-btn secondary">Add Strip</button>
-
-            <h3 style="margin-top:20px;">Channel Layout</h3>
-            <canvas id="mapping-diagram" width="400" height="300"></canvas>
 
             <h3 style="margin-top:24px;">Wiring Tests</h3>
             <div class="button-grid">

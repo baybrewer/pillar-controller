@@ -841,8 +841,20 @@ input:focus-visible {
   font-size: 13px;
 }
 
+.strip-table-wrap {
+  overflow-x: auto;
+}
+
 #strip-table input[type="number"] {
-  width: 70px;
+  width: 55px;
+  padding: 6px 2px 6px 6px;
+}
+
+#strip-table .ch-input { width: 38px; }
+#strip-table .ofs-input { width: 46px; }
+
+#strip-table select {
+  padding: 6px 2px 6px 4px;
 }
 
 #strip-table .strip-id {
@@ -852,7 +864,7 @@ input:focus-visible {
 }
 
 #strip-table .dim-slider {
-  width: 60px;
+  width: 50px;
 }
 
 #strip-table .strip-actions {
@@ -861,8 +873,8 @@ input:focus-visible {
 }
 
 #strip-table .strip-actions button {
-  padding: 4px 8px;
-  font-size: 11px;
+  padding: 4px 6px;
+  font-size: 10px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface2);
