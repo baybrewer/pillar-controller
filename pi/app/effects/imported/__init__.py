@@ -7,10 +7,12 @@ from .classic import CLASSIC_EFFECTS
 from .ambient_a import AMBIENT_A_EFFECTS
 from .ambient_b import AMBIENT_B_EFFECTS
 from .sound import SOUND_EFFECTS
+from .sound_variants import SOUND_VARIANTS_EFFECTS
 
 IMPORTED_EFFECTS = {
   **CLASSIC_EFFECTS,
   **AMBIENT_A_EFFECTS,
   **AMBIENT_B_EFFECTS,
   **SOUND_EFFECTS,
+  **SOUND_VARIANTS_EFFECTS,
 }

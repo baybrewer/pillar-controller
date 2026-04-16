@@ -1,4 +1,4 @@
-"""Tests for all 27 imported animations — render shape, time continuity, graceful degradation."""
+"""Tests for all imported animations — render shape, time continuity, graceful degradation."""
 
 import time
 import numpy as np
@@ -9,6 +9,7 @@ from app.effects.imported.classic import CLASSIC_EFFECTS
 from app.effects.imported.ambient_a import AMBIENT_A_EFFECTS
 from app.effects.imported.ambient_b import AMBIENT_B_EFFECTS
 from app.effects.imported.sound import SOUND_EFFECTS
+from app.effects.imported.sound_variants import SOUND_VARIANTS_EFFECTS
 from app.effects.switcher import AnimationSwitcher
 
 
@@ -24,8 +25,12 @@ def _make_state():
 
 
 class TestImportedEffectCount:
-  def test_total_27(self):
-    assert len(IMPORTED_EFFECTS) == 27
+  def test_total_matches_sum(self):
+    expected = (
+      len(CLASSIC_EFFECTS) + len(AMBIENT_A_EFFECTS) + len(AMBIENT_B_EFFECTS)
+      + len(SOUND_EFFECTS) + len(SOUND_VARIANTS_EFFECTS)
+    )
+    assert len(IMPORTED_EFFECTS) == expected
 
   def test_classic_5(self):
     assert len(CLASSIC_EFFECTS) == 5
@@ -38,6 +43,10 @@ class TestImportedEffectCount:
 
   def test_sound_10(self):
     assert len(SOUND_EFFECTS) == 10
+
+  def test_sound_variants_present(self):
+    assert len(SOUND_VARIANTS_EFFECTS) >= 1
+    assert 'sr_feldstein' in SOUND_VARIANTS_EFFECTS
 
   def test_no_name_collisions(self):
     all_names = list(IMPORTED_EFFECTS.keys())
