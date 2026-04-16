@@ -13,7 +13,7 @@ from ..schemas import ChannelConfigRequest
 from ...config.installation import (
   save_installation, VALID_COLOR_ORDERS, MAX_LEDS_PER_CHANNEL,
 )
-from ...mapping.runtime_plan import compile_channel_plan
+from ...mapping.runtime_plan import compile_strip_plan
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def create_router(deps, require_auth, broadcast_state) -> APIRouter:
             ch.led_count = req.led_count
 
         # Persist (plan recompile disabled until mapping interface is built)
-        # plan = compile_channel_plan(deps.installation, deps.controller_profile)
+        # plan = compile_strip_plan(deps.installation, deps.controller_profile)
         # deps.renderer.apply_output_plan(plan)
 
         # Persist

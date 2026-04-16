@@ -23,7 +23,7 @@ from .effects.audio_reactive import AUDIO_EFFECTS
 from .diagnostics.patterns import DIAGNOSTIC_EFFECTS
 from .config.installation import load_installation
 from .config.spatial_map import load_spatial_map
-from .mapping.runtime_plan import load_controller_profile, compile_channel_plan
+from .mapping.runtime_plan import load_controller_profile, compile_strip_plan
 from .preview.service import PreviewService
 from .effects.imported import IMPORTED_EFFECTS
 from .effects.switcher import AnimationSwitcher
@@ -172,19 +172,16 @@ def main():
     ),
   ))
 
-  # Installation config — mutable strip setup truth
+  # Installation config — mutable strip mapping
   installation = load_installation(config_dir)
   spatial_map = load_spatial_map(config_dir)
   controller_profile = load_controller_profile(config.get('hardware'))
-  compiled_plan = compile_channel_plan(installation, controller_profile)
-  active_channels = [ch for ch in installation.channels if ch.led_count > 0]
-  logger.info(f"Installation: {len(active_channels)} active channels")
-  logger.info(f"Compiled plan: {compiled_plan.channels}ch x {compiled_plan.leds_per_channel}leds")
+  compiled_plan = compile_strip_plan(installation, controller_profile)
+  logger.info(f"Installation: {len(installation.strips)} strips")
+  logger.info(f"Compiled plan: {compiled_plan.channels}ch x {compiled_plan.leds_per_channel}leds, {compiled_plan.logical_width} logical cols")
 
-  # Don't apply channel plan to renderer yet — legacy mapper handles
-  # 10-strip → 5-channel mapping correctly. Channel plan will be used
-  # once the mapping interface is built.
-  # renderer.apply_output_plan(compiled_plan)
+  # Apply compiled plan — enables plan-driven mapper with per-strip color/direction
+  renderer.apply_output_plan(compiled_plan)
   if spatial_map:
     logger.info(f"Spatial map: {spatial_map.profile_id}, {len(spatial_map.visible_strips)} visible strips")
 

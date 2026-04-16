@@ -198,41 +198,38 @@ def compile_output_plan(installation, controller: ControllerProfile) -> Compiled
   )
 
 
-def compile_channel_plan(installation, controller: ControllerProfile) -> CompiledOutputPlan:
-  """Compile a channel-oriented installation into an output plan.
+def compile_strip_plan(installation, controller: ControllerProfile) -> CompiledOutputPlan:
+  """Compile a strip-mapping installation into an output plan.
 
-  Each channel becomes one CompiledStripPlan entry. The channel's LED count
-  is used directly (no strip pairing).
+  Each StripMapping becomes a CompiledStripPlan. The output plan always uses
+  controller.active_outputs for channel count and controller.electrical_leds_per_output
+  for LEDs per channel — these are fixed by the Teensy firmware.
   """
-  strips = []
-  for ch in installation.channels:
-    if ch.led_count == 0:
-      continue
+  compiled_strips = []
+  for i, strip in enumerate(installation.strips):
     swizzle = derive_precontroller_swizzle(
       controller.controller_wire_order,
-      ch.color_order,
+      strip.color_order,
     )
-    strips.append(CompiledStripPlan(
-      strip_id=ch.channel,
+    compiled_strips.append(CompiledStripPlan(
+      strip_id=strip.id,
       enabled=True,
-      logical_order=ch.channel,
-      output_channel=ch.channel,
+      logical_order=i,
+      output_channel=strip.channel,
       output_slot=0,
-      output_offset=0,
-      direction='bottom_to_top',
-      installed_led_count=ch.led_count,
-      color_order=ch.color_order,
+      output_offset=strip.offset,
+      direction=strip.direction,
+      installed_led_count=strip.led_count,
+      color_order=strip.color_order,
       precontroller_swizzle=swizzle,
     ))
 
-  # Use hardware dimensions — Teensy always expects fixed channel count and size
-  logical_width = max((s.logical_order for s in strips), default=0) + 1 if strips else 0
-
+  logical_width = len(compiled_strips)
   return CompiledOutputPlan(
     controller=controller,
-    strips=tuple(strips),
+    strips=tuple(compiled_strips),
     logical_width=logical_width,
-    logical_height=controller.electrical_leds_per_output,
+    logical_height=controller.physical_leds_per_strip,
     channels=controller.active_outputs,
     leds_per_channel=controller.electrical_leds_per_output,
   )
