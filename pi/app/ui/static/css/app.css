@@ -1030,6 +1030,7 @@ input:focus-visible {
 .setup-layout {
   display: flex;
   gap: 16px;
+  align-items: flex-start;
 }
 
 .setup-main {
@@ -1038,22 +1039,36 @@ input:focus-visible {
 }
 
 .setup-preview {
-  width: 100px;
+  width: 90px;
   flex-shrink: 0;
 }
 
-.setup-preview .sim-canvas-wrap {
+.setup-preview-inner {
   position: sticky;
   top: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
 }
 
-.setup-preview canvas {
+.setup-preview-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+#setup-live-canvas {
+  display: block;
   width: 100%;
   height: auto;
-  max-height: calc(100dvh - 200px);
-  image-rendering: pixelated;
+  max-height: calc(100dvh - 180px);
   background: #000;
   border-radius: 4px;
+  image-rendering: pixelated;
 }
 
 @media (max-width: 700px) {
@@ -1063,7 +1078,7 @@ input:focus-visible {
   .setup-preview {
     width: 100%;
   }
-  .setup-preview canvas {
-    height: 200px;
+  #setup-live-canvas {
+    height: 120px;
   }
 }
