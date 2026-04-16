@@ -196,3 +196,43 @@ def compile_output_plan(installation, controller: ControllerProfile) -> Compiled
     channels=controller.active_outputs,
     leds_per_channel=controller.electrical_leds_per_output,
   )
+
+
+def compile_channel_plan(installation, controller: ControllerProfile) -> CompiledOutputPlan:
+  """Compile a channel-oriented installation into an output plan.
+
+  Each channel becomes one CompiledStripPlan entry. The channel's LED count
+  is used directly (no strip pairing).
+  """
+  strips = []
+  for ch in installation.channels:
+    if ch.led_count == 0:
+      continue
+    swizzle = derive_precontroller_swizzle(
+      controller.controller_wire_order,
+      ch.color_order,
+    )
+    strips.append(CompiledStripPlan(
+      strip_id=ch.channel,
+      enabled=True,
+      logical_order=ch.channel,
+      output_channel=ch.channel,
+      output_slot=0,
+      output_offset=0,
+      direction='bottom_to_top',
+      installed_led_count=ch.led_count,
+      color_order=ch.color_order,
+      precontroller_swizzle=swizzle,
+    ))
+
+  active_channels = len(strips)
+  max_leds = max((s.installed_led_count for s in strips), default=0)
+
+  return CompiledOutputPlan(
+    controller=controller,
+    strips=tuple(strips),
+    logical_width=active_channels,
+    logical_height=max_leds,
+    channels=active_channels,
+    leds_per_channel=max_leds,
+  )

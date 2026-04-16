@@ -1,6 +1,7 @@
 """Shared dependency container for route modules."""
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 from ..core.renderer import Renderer, RenderState
@@ -26,3 +27,7 @@ class AppDeps:
     spatial_map: Optional[object] = None
     preview_service: Optional[object] = None
     effect_catalog: Optional[object] = None
+    # Channel-oriented installation config (Task 2+)
+    installation: Optional[object] = None
+    controller_profile: Optional[object] = None
+    config_dir: Optional[Path] = None

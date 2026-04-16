@@ -23,8 +23,7 @@ from .effects.audio_reactive import AUDIO_EFFECTS
 from .diagnostics.patterns import DIAGNOSTIC_EFFECTS
 from .config.installation import load_installation
 from .config.spatial_map import load_spatial_map
-from .setup.session import SetupSessionService
-from .mapping.runtime_plan import load_controller_profile, compile_output_plan
+from .mapping.runtime_plan import load_controller_profile, compile_channel_plan
 from .preview.service import PreviewService
 from .effects.imported import IMPORTED_EFFECTS
 from .effects.switcher import AnimationSwitcher
@@ -177,8 +176,9 @@ def main():
   installation = load_installation(config_dir)
   spatial_map = load_spatial_map(config_dir)
   controller_profile = load_controller_profile(config.get('hardware'))
-  compiled_plan = compile_output_plan(installation, controller_profile)
-  logger.info(f"Installation: {installation.profile_name}, {len(installation.strips)} strips, geometry={installation.geometry_mode}")
+  compiled_plan = compile_channel_plan(installation, controller_profile)
+  active_channels = [ch for ch in installation.channels if ch.led_count > 0]
+  logger.info(f"Installation: {len(active_channels)} active channels")
   logger.info(f"Compiled plan: {compiled_plan.channels}ch x {compiled_plan.leds_per_channel}leds")
 
   # Apply compiled plan to renderer so it uses plan-driven dimensions and mapping
@@ -208,17 +208,6 @@ def main():
     logger.warning(f"Failed to restore scene '{startup}', falling back to '{fallback}'")
     renderer.activate_scene(fallback)
 
-  # Setup service
-  setup_service = SetupSessionService(
-    installation=installation,
-    controller=controller_profile,
-    config_dir=config_dir,
-    renderer=renderer,
-    render_state=render_state,
-    state_manager=state_manager,
-    media_manager=media_manager,
-  )
-
   # Preview service
   preview_service = PreviewService(renderer)
 
@@ -232,10 +221,12 @@ def main():
     media_manager=media_manager,
     audio_analyzer=audio_analyzer,
     config=sys_conf,
-    setup_session_service=setup_service,
     spatial_map=spatial_map,
     preview_service=preview_service,
     effect_catalog=effect_catalog,
+    installation=installation,
+    controller_profile=controller_profile,
+    config_dir=config_dir,
   )
 
   # Track background tasks for clean shutdown

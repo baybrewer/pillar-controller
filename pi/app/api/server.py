@@ -38,6 +38,9 @@ def create_app(
     spatial_map=None,
     preview_service=None,
     effect_catalog=None,
+    installation=None,
+    controller_profile=None,
+    config_dir=None,
 ) -> FastAPI:
 
     app = FastAPI(title="Pillar Controller", version="1.0.0")
@@ -61,6 +64,9 @@ def create_app(
         spatial_map=spatial_map,
         preview_service=preview_service,
         effect_catalog=effect_catalog,
+        installation=installation,
+        controller_profile=controller_profile,
+        config_dir=config_dir,
     )
 
     # --- WebSocket + broadcast ---
