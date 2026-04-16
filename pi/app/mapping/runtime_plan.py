@@ -233,6 +233,6 @@ def compile_channel_plan(installation, controller: ControllerProfile) -> Compile
     strips=tuple(strips),
     logical_width=logical_width,
     logical_height=controller.electrical_leds_per_output,
-    channels=controller.total_outputs,
+    channels=controller.active_outputs,
     leds_per_channel=controller.electrical_leds_per_output,
   )
