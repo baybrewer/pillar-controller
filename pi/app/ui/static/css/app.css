@@ -851,6 +851,10 @@ input:focus-visible {
   font-size: 14px;
 }
 
+#strip-table .dim-slider {
+  width: 60px;
+}
+
 #strip-table .strip-actions {
   display: flex;
   gap: 4px;

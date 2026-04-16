@@ -35,6 +35,7 @@ class StripMapping:
   direction: str = "bottom_to_top"
   led_count: int = 172
   color_order: str = "BGR"
+  brightness: float = 1.0
 
   def validate(self) -> list[str]:
     errors = []
@@ -50,6 +51,8 @@ class StripMapping:
       errors.append(f"Strip {self.id}: invalid color_order '{self.color_order}'")
     if self.direction not in VALID_DIRECTIONS:
       errors.append(f"Strip {self.id}: invalid direction '{self.direction}'")
+    if not 0.0 <= self.brightness <= 1.0:
+      errors.append(f"Strip {self.id}: brightness {self.brightness} out of range [0, 1]")
     return errors
 
 
@@ -190,6 +193,7 @@ def _parse_strips(data: dict) -> StripInstallation:
       direction=s.get('direction', 'bottom_to_top'),
       led_count=s.get('led_count', LEDS_PER_STRIP),
       color_order=s.get('color_order', CONTROLLER_WIRE_ORDER),
+      brightness=s.get('brightness', 1.0),
     ))
   return StripInstallation(
     schema_version=data.get('schema_version', SCHEMA_VERSION),

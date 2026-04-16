@@ -62,6 +62,10 @@ def create_router(deps, require_auth, broadcast_state) -> APIRouter:
             if req.color_order not in VALID_COLOR_ORDERS:
                 raise HTTPException(422, f"color_order must be one of: {', '.join(sorted(VALID_COLOR_ORDERS))}")
             strip.color_order = req.color_order
+        if req.brightness is not None:
+            if not 0.0 <= req.brightness <= 1.0:
+                raise HTTPException(422, "brightness must be 0.0-1.0")
+            strip.brightness = req.brightness
 
         _recompile_and_apply(deps)
         logger.info(f"Strip {strip_id} updated: ch{strip.channel}+{strip.offset} {strip.direction} {strip.led_count}LEDs {strip.color_order}")

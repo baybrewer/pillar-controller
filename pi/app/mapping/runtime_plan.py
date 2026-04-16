@@ -39,6 +39,7 @@ class CompiledStripPlan:
   installed_led_count: int
   color_order: str
   precontroller_swizzle: tuple[int, int, int]
+  brightness: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -222,6 +223,7 @@ def compile_strip_plan(installation, controller: ControllerProfile) -> CompiledO
       installed_led_count=strip.led_count,
       color_order=strip.color_order,
       precontroller_swizzle=swizzle,
+      brightness=strip.brightness,
     ))
 
   logical_width = len(compiled_strips)

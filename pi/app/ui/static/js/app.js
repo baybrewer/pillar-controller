@@ -766,6 +766,7 @@ function renderStripTable(strips) {
       <td><select data-strip="${s.id}" data-field="direction">${dirOpts}</select></td>
       <td><input type="number" data-strip="${s.id}" data-field="led_count" value="${s.led_count}" min="1" max="1100" step="1"></td>
       <td><select data-strip="${s.id}" data-field="color_order">${colorOpts}</select></td>
+      <td><input type="range" data-strip="${s.id}" data-field="brightness" value="${s.brightness != null ? s.brightness : 1}" min="0" max="1" step="0.05" class="dim-slider" title="${Math.round((s.brightness != null ? s.brightness : 1) * 100)}%"></td>
       <td class="strip-actions">
         <button class="test-btn" data-strip="${s.id}">Test</button>
         <button class="del-btn" data-strip="${s.id}">\u2715</button>
@@ -774,9 +775,10 @@ function renderStripTable(strips) {
     tbody.appendChild(tr);
   }
 
-  tbody.querySelectorAll('select, input[type="number"]').forEach(el => {
+  tbody.querySelectorAll('select, input[type="number"], input[type="range"]').forEach(el => {
     let debounce = null;
     el.addEventListener('input', () => {
+      if (el.type === 'range') el.title = Math.round(parseFloat(el.value) * 100) + '%';
       clearTimeout(debounce);
       debounce = setTimeout(() => updateStrip(el), 300);
     });
@@ -809,7 +811,10 @@ function renderStripTable(strips) {
 async function updateStrip(el) {
   const stripId = parseInt(el.dataset.strip);
   const field = el.dataset.field;
-  const value = (el.type === 'number') ? parseInt(el.value) : el.value;
+  let value;
+  if (el.type === 'number') value = parseInt(el.value);
+  else if (el.type === 'range') value = parseFloat(el.value);
+  else value = el.value;
 
   const body = {};
   body[field] = value;

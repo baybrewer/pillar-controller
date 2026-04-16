@@ -49,3 +49,4 @@ class StripConfigRequest(BaseModel):
     direction: Optional[str] = None
     led_count: Optional[int] = None
     color_order: Optional[str] = None
+    brightness: Optional[float] = None

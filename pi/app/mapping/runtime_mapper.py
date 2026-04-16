@@ -37,6 +37,10 @@ def map_frame_compiled(logical_frame: np.ndarray, plan: CompiledOutputPlan) -> n
     if strip.direction == "top_to_bottom":
       col = col[::-1, :]
 
+    # Apply per-strip brightness multiplier
+    if strip.brightness < 1.0:
+      col = (col * strip.brightness).astype(np.uint8)
+
     # Apply precontroller swizzle if not identity
     swizzle = strip.precontroller_swizzle
     if swizzle != (0, 1, 2):
