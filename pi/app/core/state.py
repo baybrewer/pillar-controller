@@ -137,6 +137,33 @@ class StateManager:
     self._state['target_fps'] = max(1, min(90, value))
     self.mark_dirty()
 
+  @property
+  def audio_bass_sensitivity(self) -> Optional[float]:
+    return self._state.get('audio_bass_sensitivity')
+
+  @audio_bass_sensitivity.setter
+  def audio_bass_sensitivity(self, value: float):
+    self._state['audio_bass_sensitivity'] = max(0.1, min(3.0, value))
+    self.mark_dirty()
+
+  @property
+  def audio_mid_sensitivity(self) -> Optional[float]:
+    return self._state.get('audio_mid_sensitivity')
+
+  @audio_mid_sensitivity.setter
+  def audio_mid_sensitivity(self, value: float):
+    self._state['audio_mid_sensitivity'] = max(0.1, min(3.0, value))
+    self.mark_dirty()
+
+  @property
+  def audio_treble_sensitivity(self) -> Optional[float]:
+    return self._state.get('audio_treble_sensitivity')
+
+  @audio_treble_sensitivity.setter
+  def audio_treble_sensitivity(self, value: float):
+    self._state['audio_treble_sensitivity'] = max(0.1, min(3.0, value))
+    self.mark_dirty()
+
   # --- Scene presets ---
 
   def save_scene(self, name: str, effect: str, params: dict):

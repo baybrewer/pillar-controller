@@ -12,14 +12,36 @@ def create_router(deps, require_auth) -> APIRouter:
     async def list_audio_devices():
         return {"devices": deps.audio_analyzer.list_devices()}
 
+    @router.get("/config")
+    async def get_audio_config():
+        a = deps.audio_analyzer
+        return {
+            "gain": a.gain,
+            "bass_sensitivity": a.bass_sensitivity,
+            "mid_sensitivity": a.mid_sensitivity,
+            "treble_sensitivity": a.treble_sensitivity,
+        }
+
     @router.post("/config", dependencies=[Depends(require_auth)])
     async def configure_audio(req: AudioConfigRequest):
-        if req.sensitivity is not None:
-            deps.audio_analyzer.sensitivity = req.sensitivity
+        a = deps.audio_analyzer
         if req.gain is not None:
-            deps.audio_analyzer.gain = req.gain
+            a.gain = req.gain
+        if req.bass_sensitivity is not None:
+            a.bass_sensitivity = req.bass_sensitivity
+            deps.state_manager.audio_bass_sensitivity = req.bass_sensitivity
+        if req.mid_sensitivity is not None:
+            a.mid_sensitivity = req.mid_sensitivity
+            deps.state_manager.audio_mid_sensitivity = req.mid_sensitivity
+        if req.treble_sensitivity is not None:
+            a.treble_sensitivity = req.treble_sensitivity
+            deps.state_manager.audio_treble_sensitivity = req.treble_sensitivity
+        if req.sensitivity is not None:
+            a.bass_sensitivity = req.sensitivity
+            a.mid_sensitivity = req.sensitivity
+            a.treble_sensitivity = req.sensitivity
         if req.device_index is not None:
-            deps.audio_analyzer.set_device(req.device_index)
+            a.set_device(req.device_index)
         return {"status": "ok"}
 
     @router.post("/start", dependencies=[Depends(require_auth)])

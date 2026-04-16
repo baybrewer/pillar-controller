@@ -193,6 +193,14 @@ def main():
   # Audio
   audio_analyzer = AudioAnalyzer(render_state)
 
+  # Restore saved band sensitivities
+  if state_manager.audio_bass_sensitivity is not None:
+    audio_analyzer.bass_sensitivity = state_manager.audio_bass_sensitivity
+  if state_manager.audio_mid_sensitivity is not None:
+    audio_analyzer.mid_sensitivity = state_manager.audio_mid_sensitivity
+  if state_manager.audio_treble_sensitivity is not None:
+    audio_analyzer.treble_sensitivity = state_manager.audio_treble_sensitivity
+
   # Startup scene
   startup = state_manager.current_scene or display_conf.get('startup_scene', 'rainbow_rotate')
   if not renderer.activate_scene(startup, state_manager.current_params, media_manager=media_manager):

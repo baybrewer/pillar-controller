@@ -36,5 +36,8 @@ class TestPatternRequest(BaseModel):
 
 class AudioConfigRequest(BaseModel):
     device_index: Optional[int] = None
-    sensitivity: Optional[float] = None
+    sensitivity: Optional[float] = None  # legacy: applies to all bands equally
     gain: Optional[float] = None
+    bass_sensitivity: Optional[float] = None
+    mid_sensitivity: Optional[float] = None
+    treble_sensitivity: Optional[float] = None
