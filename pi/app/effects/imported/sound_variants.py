@@ -546,7 +546,12 @@ class SRFlowField(Effect):
     pal_idx = _get_pal_idx(self.params)
 
     # Audio modulations
-    speed = base_speed * (1.0 + audio.bass * gain * 1.5)
+    # Velocity is strongly sound-dependent: silent = near-still drift,
+    # loud music = fast flow. Combine overall level + bass for wide dynamic range.
+    audio_energy = audio.volume + audio.bass * 0.5
+    speed_mult = 0.2 + audio_energy * gain * 6.0  # 0.2x at silence → up to 5x+ at loud
+    speed = base_speed * speed_mult
+
     if audio.beat:
       self._beat_flash = 1.0
     self._beat_flash *= 0.85 ** (dt * 60)
