@@ -26,9 +26,9 @@ def _load_hardware_config() -> dict:
   return {
     'pillar': {
       'strips': 10,
-      'leds_per_strip': 172,
-      'total_leds': 1720,
-      'channels': {'count': 5, 'leds_per_channel': 344},
+      'leds_per_strip': 600,
+      'total_leds': 6000,
+      'channels': {'count': 5, 'leds_per_channel': 1200},
       'color_order': 'BGR',
     },
     'controller': {
@@ -37,8 +37,8 @@ def _load_hardware_config() -> dict:
       'controller_wire_order': 'BGR',
       'active_outputs': 5,
       'total_outputs': 8,
-      'electrical_leds_per_output': 344,
-      'physical_leds_per_strip': 172,
+      'electrical_leds_per_output': 1200,
+      'physical_leds_per_strip': 600,
     },
   }
 
@@ -50,7 +50,7 @@ _controller = _hw.get('controller', {})
 
 # --- Exported pillar geometry constants ---
 STRIPS = _pillar.get('strips', 10)
-LEDS_PER_STRIP = _pillar.get('leds_per_strip', 172)
+LEDS_PER_STRIP = _pillar.get('leds_per_strip', 600)
 TOTAL_LEDS = _pillar.get('total_leds', STRIPS * LEDS_PER_STRIP)
 CHANNELS = _channels.get('count', 5)
 LEDS_PER_CHANNEL = _channels.get('leds_per_channel', LEDS_PER_STRIP * 2)
