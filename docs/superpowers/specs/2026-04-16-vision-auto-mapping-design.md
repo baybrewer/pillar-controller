@@ -100,7 +100,9 @@ All under `/api/setup/auto-map/`. All endpoints require Bearer auth (camera feed
 | `/start` | POST | Yes | Begin scan. Body: `{"channels": [0,1,2,3,4]}` — which OctoWS2811 outputs to scan (default: all active). Returns `{"session_id": "...", "srt_url": "srt://<ip>:9000"}`. Only one scan session may run at a time; starting a new one aborts any active session. |
 | `/stop` | POST | Yes | Abort current scan session. Restores previous scene. |
 | `/status` | GET | Yes | Current phase (1-4), progress %, discovered strips, stream connected (bool) |
-| `/apply` | POST | Yes | Accept results. Body: `{"session_id": "..."}`. Transaction sequence: (1) validate discovered strips, (2) compile output plan in memory, (3) stage both files to temp paths via atomic writers, (4) only if both temp writes succeed, swap installation.yaml then spatial_map.json, (5) hot-apply compiled plan. If any step fails before the swap, no files are modified. If the second swap fails after the first succeeded, log an error and return the partial state (the user can re-apply or reset). Returns the new strip list. |
+| `/results` | GET | Yes | Returns the current scan results: list of discovered strip candidates, each with `{candidate_id, channel, offset, led_count, direction, confidence, status}` where status is `"confirmed"` (auto-matched or user-accepted), `"unresolved"` (ambiguous gap or match), or `"rejected"`. |
+| `/resolve` | POST | Yes | Resolve ambiguous candidates. Body: `{"session_id": "...", "resolutions": [{"candidate_id": 0, "action": "accept"}, {"candidate_id": 1, "action": "reject"}, {"candidate_id": 2, "action": "merge", "merge_with": 3}]}`. Actions: `accept` (confirm as a strip), `reject` (discard), `merge` (combine two candidates that are the same strip seen from different angles). Returns updated results. |
+| `/apply` | POST | Yes | Commit confirmed results. Body: `{"session_id": "..."}`. Fails if any candidates are still `"unresolved"` — all must be resolved first. Transaction sequence: (1) validate confirmed strips, (2) compile output plan in memory, (3) stage both files to temp paths via atomic writers, (4) only if both temp writes succeed, swap installation.yaml then spatial_map.json, (5) hot-apply compiled plan. If any step fails before the swap, no files are modified. If the second swap fails after the first succeeded, log an error and return the partial state (the user can re-apply or reset). Returns the new strip list. |
 | `/ws` | WebSocket | Yes | Live camera frame (downscaled) + blob overlay + JSON progress. Auth via `?token=` query param (WebSocket can't send headers). |
 
 ### WebSocket Message Types
@@ -161,7 +163,7 @@ Must conform to the existing `SpatialMap` / `StripGeometry` schema in `pi/app/co
 
 ```python
 SpatialMap:
-  schema_version: 1
+  schema_version: 2  # bumped from 1 — v2 allows null entries in positions
   profile_id: "auto_map"
   coordinate_space: "front_projection_uv"
   camera_resolution: [W, H]  # from stream
@@ -171,7 +173,7 @@ SpatialMap:
 
 StripGeometry:
   id: int  # matches StripMapping.id
-  anchors: [[x,y], ...]  # 5 evenly-spaced anchor points (0%, 25%, 50%, 75%, 100%)
+  anchors: [[x,y]|null, ...]  # 5 canonical strip points (0%, 25%, 50%, 75%, 100% of full strip), null if unobserved
   positions: [[x,y], ...]  # ALWAYS full strip length (led_count entries), indexed by absolute LED index
   fit_method: "auto_map_v1"
   visibility: "direct" | "partial"  # partial if some LEDs wrap behind cylinder
@@ -179,7 +181,7 @@ StripGeometry:
 
 **Populating from scan data:**
 - `positions` — ALWAYS a full-length array of `led_count` entries, indexed by absolute LED index (0 through led_count-1). Observed positions are stored as `[x_uv, y_uv]` in image-space UV: `x_uv = x_px / frame_width`, `y_uv = 1.0 - (y_px / frame_height)` (bottom-left origin). Unobserved LEDs (not visible from any scan angle yet) are stored as `null`. This uses the camera resolution as the stable coordinate frame, NOT a per-scan bounding box — ensuring coordinates remain comparable across scan angles. The `bounds` field is computed as metadata (min/max of all non-null strip positions) but is not used for normalization.
-- `anchors` — pick 5 evenly-spaced samples from the observed (non-null) positions (at 0%, 25%, 50%, 75%, 100% of the observed range)
+- `anchors` — always 5 entries at canonical strip positions: LED indices at 0%, 25%, 50%, 75%, 100% of `led_count`. If the LED at that index was observed, store its `[x_uv, y_uv]`; if unobserved, store `null`. This means partially-visible strips have sparse anchors (e.g., `[null, null, [0.3, 0.5], [0.35, 0.7], [0.4, 0.9]]` when only the bottom half was visible). Anchors are updated on re-scan as positions fill in.
 - `visibility` — "direct" if all LEDs on the strip have non-null positions, "partial" if any are still null
 - `visible_strips` — the union of all strip IDs that have at least one non-null position, accumulated across all accepted scans
 - Multi-angle merge: when re-scanning, newly observed positions fill in null entries; already-observed positions are updated only if the new observation has higher confidence
