@@ -85,6 +85,15 @@ function updateState(data) {
         `Effective: ${Math.round(b.effective_brightness * 100)}%`;
     }
   }
+
+  // Audio spectrum + beat
+  if (data.audio_spectrum) {
+    spectrumTarget = data.audio_spectrum;
+  }
+  const beatEl = document.getElementById('beat-indicator');
+  if (beatEl) {
+    beatEl.classList.toggle('active', !!data.audio_beat);
+  }
 }
 
 // --- API helpers ---
@@ -152,7 +161,7 @@ function activateTab(tab) {
   }
 
   if (tab.dataset.tab === 'media') loadMedia();
-  if (tab.dataset.tab === 'audio') loadAudioDevices();
+  if (tab.dataset.tab === 'audio') { loadAudioDevices(); loadAudioConfig(); }
   if (tab.dataset.tab === 'diag') loadStats();
   if (tab.dataset.tab === 'system') loadSystemStatus();
 }
@@ -479,6 +488,83 @@ function initUpload() {
 
 // --- Audio ---
 
+let spectrumTarget = new Array(16).fill(0);
+let spectrumCurrent = new Array(16).fill(0);
+let spectrumAnimId = null;
+
+const BAND_COLORS = [
+  '#c0392b','#c0392b','#c0392b','#d35400',
+  '#e67e22','#f1c40f','#2ecc71','#2ecc71','#27ae60','#2ecc71',
+  '#3498db','#2980b9','#8e44ad','#9b59b6','#8e44ad','#9b59b6',
+];
+
+function renderSpectrum() {
+  const canvas = document.getElementById('spectrum-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+
+  const w = rect.width;
+  const h = rect.height;
+  const barCount = 16;
+  const gap = 3;
+  const barWidth = (w - gap * (barCount + 1)) / barCount;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Band region labels
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = '#c0392b88';
+  ctx.fillText('BASS', gap, 12);
+  ctx.fillStyle = '#2ecc7188';
+  ctx.fillText('MID', gap + (barWidth + gap) * 4, 12);
+  ctx.fillStyle = '#9b59b688';
+  ctx.fillText('TREBLE', gap + (barWidth + gap) * 10, 12);
+
+  for (let i = 0; i < barCount; i++) {
+    spectrumCurrent[i] += (spectrumTarget[i] - spectrumCurrent[i]) * 0.3;
+  }
+
+  for (let i = 0; i < barCount; i++) {
+    const x = gap + i * (barWidth + gap);
+    const barH = Math.max(1, spectrumCurrent[i] * (h - 20));
+    const y = h - barH;
+
+    const grad = ctx.createLinearGradient(x, h, x, y);
+    grad.addColorStop(0, BAND_COLORS[i] + '44');
+    grad.addColorStop(1, BAND_COLORS[i]);
+    ctx.fillStyle = grad;
+
+    const r = Math.min(3, barWidth / 2);
+    ctx.beginPath();
+    ctx.moveTo(x, h);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.lineTo(x + barWidth - r, y);
+    ctx.quadraticCurveTo(x + barWidth, y, x + barWidth, y + r);
+    ctx.lineTo(x + barWidth, h);
+    ctx.fill();
+  }
+
+  spectrumAnimId = requestAnimationFrame(renderSpectrum);
+}
+
+function startSpectrum() {
+  if (!spectrumAnimId) renderSpectrum();
+}
+
+function stopSpectrum() {
+  if (spectrumAnimId) {
+    cancelAnimationFrame(spectrumAnimId);
+    spectrumAnimId = null;
+  }
+}
+
 async function loadAudioDevices() {
   const data = await api('GET', '/api/audio/devices');
   if (!data) return;
@@ -493,27 +579,63 @@ async function loadAudioDevices() {
   }
 }
 
+async function loadAudioConfig() {
+  const data = await api('GET', '/api/audio/config');
+  if (!data) return;
+  const setSlider = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val != null) {
+      el.value = Math.round(val * 100);
+      const valEl = document.getElementById(id + '-value');
+      if (valEl) valEl.textContent = Math.round(val * 100) + '%';
+    }
+  };
+  setSlider('audio-gain', data.gain);
+  setSlider('sens-bass', data.bass_sensitivity);
+  setSlider('sens-mid', data.mid_sensitivity);
+  setSlider('sens-treble', data.treble_sensitivity);
+}
+
 function initAudio() {
   document.getElementById('audio-device-select').addEventListener('change', (e) => {
     const idx = e.target.value ? parseInt(e.target.value) : null;
-    api('POST', '/api/audio/config', { device_index: idx, sensitivity: 1.0, gain: 1.0 });
+    api('POST', '/api/audio/config', { device_index: idx });
   });
 
   document.getElementById('audio-start-btn').addEventListener('click', () => {
     api('POST', '/api/audio/start');
+    startSpectrum();
   });
 
   document.getElementById('audio-stop-btn').addEventListener('click', () => {
     api('POST', '/api/audio/stop');
+    stopSpectrum();
   });
 
-  document.getElementById('audio-sensitivity').addEventListener('change', (e) => {
-    api('POST', '/api/audio/config', { sensitivity: e.target.value / 100 });
+  document.getElementById('audio-gain').addEventListener('input', (e) => {
+    const val = e.target.value / 100;
+    document.getElementById('audio-gain-value').textContent = Math.round(val * 100) + '%';
+    api('POST', '/api/audio/config', { gain: val });
   });
 
-  document.getElementById('audio-gain').addEventListener('change', (e) => {
-    api('POST', '/api/audio/config', { gain: e.target.value / 100 });
-  });
+  const bandSliders = [
+    { id: 'sens-bass', param: 'bass_sensitivity' },
+    { id: 'sens-mid', param: 'mid_sensitivity' },
+    { id: 'sens-treble', param: 'treble_sensitivity' },
+  ];
+  for (const { id, param } of bandSliders) {
+    let debounce = null;
+    document.getElementById(id).addEventListener('input', (e) => {
+      const val = e.target.value / 100;
+      document.getElementById(id + '-value').textContent = Math.round(val * 100) + '%';
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        api('POST', '/api/audio/config', { [param]: val });
+      }, 100);
+    });
+  }
+
+  startSpectrum();
 }
 
 // --- Diagnostics ---

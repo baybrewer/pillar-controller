@@ -330,46 +330,78 @@ select {
   font-size: 14px;
 }
 
-#audio-meter {
+#spectrum-container {
   margin-top: 16px;
-  display: flex;
-  gap: 8px;
+  position: relative;
 }
 
-.meter-bar {
-  flex: 1;
-  height: 120px;
+#spectrum-canvas {
+  width: 100%;
+  height: 140px;
   background: var(--surface2);
   border-radius: 8px;
-  position: relative;
-  overflow: hidden;
+  display: block;
+}
+
+.spectrum-labels {
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.meter-bar::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 0%;
-  transition: height 0.1s;
-  border-radius: 0 0 8px 8px;
-}
-
-#meter-bass::after { background: var(--danger); }
-#meter-mid::after { background: var(--success); }
-#meter-high::after { background: var(--accent); }
-
-.meter-bar span {
-  position: relative;
-  z-index: 1;
-  font-size: 12px;
+  justify-content: space-between;
+  font-size: 11px;
   color: var(--text-dim);
-  padding-bottom: 4px;
+  padding: 4px 4px 0;
 }
+
+#beat-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: background 0.1s;
+}
+
+#beat-indicator.active {
+  background: #fff;
+  box-shadow: 0 0 8px #fff;
+}
+
+#band-sensitivity {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.band-control {
+  flex: 1;
+  text-align: center;
+  padding: 8px;
+  background: var(--surface2);
+  border-radius: 8px;
+}
+
+.band-control label {
+  display: block;
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.band-control input[type="range"] {
+  width: 100%;
+}
+
+.band-control .slider-value {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.band-bass label { color: #c0392b; }
+.band-mid label { color: #2ecc71; }
+.band-treble label { color: #9b59b6; }
 
 /* Diagnostics */
 #diag-stats {

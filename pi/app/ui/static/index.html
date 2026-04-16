@@ -133,8 +133,7 @@
           <div class="help-content" hidden>
             <p>Configure the microphone for sound-reactive effects.</p>
             <p>Select your audio input device from the dropdown. Tap "Start Audio" to begin listening.</p>
-            <p>Sensitivity adjusts how responsive effects are to sound. Gain boosts quiet audio sources.</p>
-            <p>The meter bars show real-time bass, mid, and high frequency levels. Sound-reactive effects won't respond to music until audio is started.</p>
+            <p>Adjust bass, mid, and treble sensitivity to tune how effects respond to each frequency range.</p>
           </div>
         </div>
         <div class="audio-controls">
@@ -143,20 +142,36 @@
             <select id="audio-device-select"></select>
           </div>
           <div class="control-group">
-            <label>Sensitivity</label>
-            <input type="range" id="audio-sensitivity" min="0" max="200" value="100">
-          </div>
-          <div class="control-group">
             <label>Gain</label>
             <input type="range" id="audio-gain" min="0" max="300" value="100">
+            <span id="audio-gain-value" class="slider-value">100%</span>
           </div>
           <button id="audio-start-btn" class="action-btn">Start Audio</button>
           <button id="audio-stop-btn" class="action-btn secondary">Stop Audio</button>
         </div>
-        <div id="audio-meter">
-          <div class="meter-bar" id="meter-bass"><span>Bass</span></div>
-          <div class="meter-bar" id="meter-mid"><span>Mid</span></div>
-          <div class="meter-bar" id="meter-high"><span>High</span></div>
+        <div id="spectrum-container">
+          <canvas id="spectrum-canvas" width="400" height="140"></canvas>
+          <div class="spectrum-labels">
+            <span>20 Hz</span><span>250</span><span>4k</span><span>16k Hz</span>
+          </div>
+          <div id="beat-indicator"></div>
+        </div>
+        <div id="band-sensitivity">
+          <div class="band-control band-bass">
+            <label>Bass</label>
+            <input type="range" id="sens-bass" min="10" max="300" value="100" step="5">
+            <span id="sens-bass-value" class="slider-value">100%</span>
+          </div>
+          <div class="band-control band-mid">
+            <label>Mid</label>
+            <input type="range" id="sens-mid" min="10" max="300" value="100" step="5">
+            <span id="sens-mid-value" class="slider-value">100%</span>
+          </div>
+          <div class="band-control band-treble">
+            <label>Treble</label>
+            <input type="range" id="sens-treble" min="10" max="300" value="100" step="5">
+            <span id="sens-treble-value" class="slider-value">100%</span>
+          </div>
         </div>
       </section>
 
