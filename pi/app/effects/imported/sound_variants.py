@@ -386,8 +386,109 @@ class SRMatrixRain(Effect):
     return max(0.0, dt)
 
 
+# ═══════════════════════════════════════════════════════════════════
+#  SR MOIRE
+# ═══════════════════════════════════════════════════════════════════
+
+class SRMoire(Effect):
+  """Sound-reactive Moire: bass tightens rings, beat pulses centers inward,
+  drop expands ring scale."""
+
+  CATEGORY = "sound"
+  DISPLAY_NAME = "SR Moire"
+  DESCRIPTION = "Audio-reactive ring interference — bass density, beat pulse, drop expand"
+  PALETTE_SUPPORT = True
+
+  PARAMS = [
+    _Param("Gain", "gain", 0.2, 5.0, 0.1, 1.0),
+    _Param("Speed", "speed", 0.05, 2.0, 0.05, 0.4),
+    _Param("Scale", "scale", 0.3, 3.0, 0.1, 1.0),
+    _Param("Centers", "centers", 2, 5, 1, 3),
+  ]
+  _SCALAR_PARAMS = {"gain": 1.0, "speed": 0.4, "scale": 1.0, "centers": 3, "palette": 0}
+  NATIVE_WIDTH = 10
+
+  def __init__(self, width=10, height=N, params=None):
+    super().__init__(width, height, params)
+    self._audio_adapter = AudioCompatAdapter()
+    self.buf = LEDBuffer(width, height)
+    self._t = 0.0
+    self._last_t = None
+    self._beat_pull = 0.0
+    self._drop_boost = 0.0
+
+  def render(self, t, state):
+    dt_ms = self._calc_dt_ms(t)
+    dt_s = dt_ms * 0.001
+    raw = state._audio_lock_free
+    audio = self._audio_adapter.adapt(raw, t)
+
+    gain = self.params.get("gain", 1.0)
+    speed = self.params.get("speed", 0.4)
+    base_sc = self.params.get("scale", 1.0)
+    nc = int(self.params.get("centers", 3))
+    pal_idx = _get_pal_idx(self.params)
+
+    # Audio modulations
+    sc = base_sc * (1.0 + audio.bass * gain * 1.5)
+    if audio.beat:
+      self._beat_pull = 1.0
+    self._beat_pull *= 0.88 ** (dt_s * 60)
+
+    if audio.drop:
+      self._drop_boost = 1.0
+    self._drop_boost *= 0.9 ** (dt_s * 60)
+    sc *= 1.0 + self._drop_boost * gain
+
+    self._t += dt_s * speed
+    tt = self._t
+
+    cols = self.width
+    rows = self.height
+
+    centers = []
+    for i in range(nc):
+      phase = i * 6.28 / nc
+      cx = (math.sin(tt * 0.7 + phase) * 0.5 + 0.5) * cols
+      cy = rows / 2 + math.sin(tt * 0.3 + phase * 1.7) * rows * 0.35
+      # Beat pull: centers move toward pillar center
+      pull = self._beat_pull * 0.6 * gain
+      cx = cx * (1.0 - pull) + (cols / 2) * pull
+      cy = cy * (1.0 - pull) + (rows / 2) * pull
+      centers.append((cx, cy))
+
+    x_g = np.arange(cols, dtype=np.float64)[:, np.newaxis]
+    y_g = np.arange(rows, dtype=np.float64)[np.newaxis, :]
+
+    val = np.zeros((cols, rows), dtype=np.float64)
+    for cx, cy in centers:
+      dx = x_g - cx
+      dx = np.where(np.abs(dx) > cols / 2, dx - np.sign(dx) * cols, dx)
+      dy = (y_g - cy) * (cols / rows) * 5
+      dist = np.sqrt(dx ** 2 + dy ** 2)
+      val += np.sin(dist * sc * 3 + tt * 2)
+    val /= nc
+
+    hue = (val + 1) * 0.5
+    bright = np.clip((np.abs(val) ** 0.5) * 0.9 + 0.1, 0.0, 1.0)
+
+    rgb = pal_color_grid(pal_idx, hue)
+    self.buf.data = (rgb.astype(np.float32) * bright[..., np.newaxis]).clip(0, 255).astype(np.uint8)
+
+    return self.buf.get_frame()
+
+  def _calc_dt_ms(self, t):
+    if self._last_t is None:
+      self._last_t = t
+      return 16.67
+    dt = (t - self._last_t) * 1000.0
+    self._last_t = t
+    return max(0.0, dt)
+
+
 SOUND_VARIANTS_EFFECTS = {
   'sr_feldstein': SRFeldstein,
   'sr_lava_lamp': SRLavaLamp,
   'sr_matrix_rain': SRMatrixRain,
+  'sr_moire': SRMoire,
 }
