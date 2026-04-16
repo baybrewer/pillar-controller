@@ -43,9 +43,9 @@ For each of the 5 active OctoWS2811 channels:
 For each visible channel-half:
 
 1. **Coarse sweep** — light every 10th LED across the range (0, 10, 20, ... 170), recording which produce visible blobs and their centroid positions
-2. **Cluster visible runs** — group contiguous visible LEDs by centroid continuity. A position jump (>N pixels between adjacent samples) indicates either a gap (strip wraps behind cylinder) or a daisy-chain boundary (strip 1 ends, strip 2 begins)
+2. **Cluster visible runs** — group contiguous visible LEDs by centroid continuity. A position jump (>N pixels between adjacent samples) marks a **visibility gap**. All gaps are treated equally at this stage — the system does NOT attempt to distinguish occlusion (strip wraps behind cylinder) from electrical boundaries (daisy-chain) from a single camera angle.
 3. **Refine endpoints** — for each visible run, binary search within the 10-LED gaps at the start and end to find exact first/last visible LED
-4. **LED count** — total visible LEDs per run. Multiple runs on the same channel-half with a large position discontinuity between them = daisy-chain boundary
+4. **LED count** — total visible LEDs per run. Runs are recorded as `(channel, start_index, end_index, centroids)`. Daisy-chain boundaries (where strip 1 ends and strip 2 begins on the same channel) are only committed when corroborated: either (a) a second scan angle shows the gap persists even when both sides are visible, or (b) the electrical index crosses the known 172-LED boundary AND positions are spatially discontinuous. Until corroborated, gaps remain "unresolved" and the system presents them to the user for confirmation.
 5. **Partial visibility** — if a strip wraps behind the cylinder, only the visible segment is mapped in this pass. Re-scan from another angle fills in the rest.
 
 ### Phase 3: Position Sampling (~30-60 seconds)
@@ -100,7 +100,7 @@ All under `/api/setup/auto-map/`. All endpoints require Bearer auth (camera feed
 | `/start` | POST | Yes | Begin scan. Body: `{"channels": [0,1,2,3,4]}` — which OctoWS2811 outputs to scan (default: all active). Returns `{"session_id": "...", "srt_url": "srt://<ip>:9000"}`. Only one scan session may run at a time; starting a new one aborts any active session. |
 | `/stop` | POST | Yes | Abort current scan session. Restores previous scene. |
 | `/status` | GET | Yes | Current phase (1-4), progress %, discovered strips, stream connected (bool) |
-| `/apply` | POST | Yes | Accept results. Body: `{"session_id": "..."}`. Validates discovered strips → writes installation.yaml + spatial_map.json → recompiles output plan → hot-applies. On compile/save failure, rolls back (no partial writes — uses atomic file replacement already in `save_spatial_map`). Returns the new strip list. |
+| `/apply` | POST | Yes | Accept results. Body: `{"session_id": "..."}`. Transaction sequence: (1) validate discovered strips, (2) compile output plan in memory, (3) stage both files to temp paths via atomic writers, (4) only if both temp writes succeed, swap installation.yaml then spatial_map.json, (5) hot-apply compiled plan. If any step fails before the swap, no files are modified. If the second swap fails after the first succeeded, log an error and return the partial state (the user can re-apply or reset). Returns the new strip list. |
 | `/ws` | WebSocket | Yes | Live camera frame (downscaled) + blob overlay + JSON progress. Auth via `?token=` query param (WebSocket can't send headers). |
 
 ### WebSocket Message Types
@@ -112,7 +112,11 @@ All under `/api/setup/auto-map/`. All endpoints require Bearer auth (camera feed
 
 The scan uses a dedicated `ScanEffect` (a standard effect class with `render()`) that the auto-mapper injects via `renderer.activate_scene('_scan', params)`. The ScanEffect's params are updated in-place by the mapper each step: `{"mode": "channel_flood", "channel": 2}` or `{"mode": "single_led", "channel": 0, "index": 47}`. The renderer's existing brightness/gamma/output-plan pipeline applies normally.
 
-**Scene ownership:** On scan start, the mapper saves `renderer.state.current_scene` and `renderer.current_effect`. On scan end (complete or abort), it restores the previous scene via `renderer.activate_scene(saved_name, saved_params)`. If no scene was active, it sets blackout.
+**Scene ownership:** On scan start, the mapper snapshots:
+- `renderer.state.current_scene` (scene name string, e.g. `"rainbow"` or `"media:clip1"`)
+- The saved params for that scene from `state_manager.get_effect_params(scene_name)`
+
+On scan end (complete or abort), it restores via `renderer.activate_scene(saved_name, saved_params, media_manager=deps.media_manager)`. This handles both generative and media scenes (the `media_manager` kwarg is required for `media:` prefixed scenes per `renderer.py:178-198`). If no scene was active (`current_scene` is None), it sets blackout.
 
 **Concurrency guard:** Only one scan session at a time. The `/start` endpoint checks for an active session and aborts it before starting a new one. The scan task runs as a background `asyncio.Task` — cancellation via `/stop` triggers cleanup.
 
@@ -143,7 +147,7 @@ Each discovered strip produces a `StripMapping` entry:
 | `id` | Auto-assigned (0, 1, 2...) |
 | `channel` | Discovered in Phase 1 (which OctoWS2811 output) |
 | `offset` | Discovered in Phase 2 (LED offset on channel) |
-| `direction` | Inferred in Phase 3 (y-trend of positions) |
+| `direction` | Inferred in Phase 3 (principal-axis projection of centroid trend) |
 | `led_count` | Discovered in Phase 2 (boundary search) |
 | `color_order` | Default "BGR" (optionally detected via rgb_order.py follow-up) |
 | `brightness` | Default 1.0 (user adjusts manually) |
@@ -174,7 +178,7 @@ StripGeometry:
 
 **Populating from scan data:**
 - `anchors` — pick 5 evenly-spaced samples from the Phase 3 position data (LED indices at 0%, 25%, 50%, 75%, 100% of visible range)
-- `positions` — all sampled positions + linearly interpolated positions for LEDs between samples, normalized to [0,1] UV space using the bounding box of all detected positions
+- `positions` — all sampled positions + linearly interpolated positions for LEDs between samples, normalized to image-space UV: `x_uv = x_px / frame_width`, `y_uv = 1.0 - (y_px / frame_height)` (bottom-left origin). This uses the camera resolution as the stable coordinate frame, NOT a per-scan bounding box — ensuring coordinates remain comparable across scan angles. The `bounds` field is computed as metadata (min/max of all strip positions) but is not used for normalization.
 - `visibility` — "direct" if all LEDs on the strip were visible, "partial" if gaps exist
 - Multi-angle merge: when re-scanning, a strip with more visible LEDs or higher average confidence replaces the existing entry
 
@@ -182,7 +186,11 @@ Feeds into existing `SpatialMap` for front-projection effects.
 
 ### Merge Behavior on Re-scan
 
-- Strips already in installation.yaml that are re-discovered → updated, not duplicated
+**Reconciliation key:** A newly discovered run is matched to an existing strip by `(channel, overlapping electrical index range)`. If a new run on channel 2, indices 0-170 overlaps with an existing strip on channel 2, offset 0, led_count 172, they're the same strip. If geometric consistency also holds (centroid positions for overlapping indices are within a tolerance), the match is confirmed and the existing entry is updated with the more complete data.
+
+**Ambiguous matches** (e.g., overlapping index range but inconsistent geometry) are flagged in the UI as "needs confirmation" — the user decides whether to accept or discard.
+
+- Matched strips → updated with more-complete data (more visible LEDs, higher confidence), not duplicated
 - Strips not visible in the current scan → left untouched
 - "Reset Mapping" option available to clear and start fresh
 
