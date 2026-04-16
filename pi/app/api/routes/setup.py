@@ -42,9 +42,9 @@ def create_router(deps, require_auth, broadcast_state) -> APIRouter:
                 raise HTTPException(422, f"led_count must be 0-{MAX_LEDS_PER_CHANNEL}, got {req.led_count}")
             ch.led_count = req.led_count
 
-        # Recompile and hot-apply
-        plan = compile_channel_plan(deps.installation, deps.controller_profile)
-        deps.renderer.apply_output_plan(plan)
+        # Persist (plan recompile disabled until mapping interface is built)
+        # plan = compile_channel_plan(deps.installation, deps.controller_profile)
+        # deps.renderer.apply_output_plan(plan)
 
         # Persist
         save_installation(deps.installation, deps.config_dir)

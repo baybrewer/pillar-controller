@@ -181,8 +181,10 @@ def main():
   logger.info(f"Installation: {len(active_channels)} active channels")
   logger.info(f"Compiled plan: {compiled_plan.channels}ch x {compiled_plan.leds_per_channel}leds")
 
-  # Apply compiled plan to renderer so it uses plan-driven dimensions and mapping
-  renderer.apply_output_plan(compiled_plan)
+  # Don't apply channel plan to renderer yet — legacy mapper handles
+  # 10-strip → 5-channel mapping correctly. Channel plan will be used
+  # once the mapping interface is built.
+  # renderer.apply_output_plan(compiled_plan)
   if spatial_map:
     logger.info(f"Spatial map: {spatial_map.profile_id}, {len(spatial_map.visible_strips)} visible strips")
 
