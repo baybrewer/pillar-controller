@@ -12,6 +12,23 @@ def create_router(deps, require_auth, broadcast_state) -> APIRouter:
     # Shared catalog instance for consistent metadata
     _catalog = EffectCatalogService()
 
+    def _default_switcher_playlist():
+      """All non-diagnostic, non-switcher effects sorted alphabetically by label."""
+      catalog = (
+        deps.effect_catalog.get_catalog()
+        if hasattr(deps, 'effect_catalog') and deps.effect_catalog
+        else _catalog.get_catalog()
+      )
+      entries = [
+        (name, meta.label or name)
+        for name, meta in catalog.items()
+        if name != 'animation_switcher'
+        and meta.group != 'diagnostic'
+        and not name.startswith('diag_')
+      ]
+      entries.sort(key=lambda e: e[1].lower())
+      return [name for name, _ in entries]
+
     @router.get("/list")
     async def list_effects():
         """Compatibility endpoint — projects catalog metadata into the legacy shape."""
@@ -38,6 +55,13 @@ def create_router(deps, require_auth, broadcast_state) -> APIRouter:
             params_to_apply = deps.state_manager.get_effect_params(req.effect) or None
         else:
             params_to_apply = req.params
+
+        # Animation Switcher: inject default playlist on first activation
+        if req.effect == 'animation_switcher':
+          if params_to_apply is None or 'playlist' not in (params_to_apply or {}):
+            base = dict(params_to_apply or {})
+            base['playlist'] = _default_switcher_playlist()
+            params_to_apply = base
 
         success = deps.renderer.activate_scene(req.effect, params_to_apply)
         if success:

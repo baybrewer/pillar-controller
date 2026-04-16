@@ -104,3 +104,116 @@ class TestStatus:
     assert 'playlist' in status
     assert 'interval' in status
     assert 'time_remaining' in status
+
+
+# --- Scenes route default-injection tests ---
+
+import asyncio
+
+
+class _StubRenderer:
+  def __init__(self):
+    self.current_effect = None
+    self.effect_registry = {}
+    self.activated = []
+
+  def activate_scene(self, name, params=None, media_manager=None):
+    self.activated.append((name, dict(params or {})))
+    self.current_effect = type('E', (), {'params': dict(params or {})})()
+    return True
+
+
+class _StubStateManager:
+  def __init__(self):
+    self._effect_params = {}
+    self.current_scene = None
+    self.current_params = {}
+
+  def get_effect_params(self, name):
+    return dict(self._effect_params.get(name, {}))
+
+  def set_effect_params(self, name, params):
+    self._effect_params[name] = dict(params)
+
+
+def _build_route_test_deps(catalog):
+  from types import SimpleNamespace
+  return SimpleNamespace(
+    renderer=_StubRenderer(),
+    state_manager=_StubStateManager(),
+    effect_catalog=catalog,
+  )
+
+
+def _get_activate_handler(deps):
+  from app.api.routes.scenes import create_router
+  async def noop_broadcast():
+    pass
+  def noop_auth():
+    return None
+  router = create_router(deps, noop_auth, noop_broadcast)
+  for route in router.routes:
+    if getattr(route, 'path', None) == '/api/scenes/activate':
+      return route.endpoint
+  raise RuntimeError("activate endpoint not found")
+
+
+def _build_catalog():
+  from app.effects.catalog import EffectCatalogService, EffectMeta
+  svc = EffectCatalogService()
+  svc._catalog['twinkle'] = EffectMeta(name='twinkle', label='Twinkle', group='generative', description='')
+  svc._catalog['fire'] = EffectMeta(name='fire', label='Fire', group='generative', description='')
+  svc._catalog['animation_switcher'] = EffectMeta(
+    name='animation_switcher', label='Animation Switcher', group='special', description=''
+  )
+  return svc
+
+
+def test_first_activation_injects_default_playlist():
+  catalog = _build_catalog()
+  deps = _build_route_test_deps(catalog)
+  handler = _get_activate_handler(deps)
+
+  from app.api.schemas import SceneRequest
+  req = SceneRequest(effect='animation_switcher', params=None)
+  result = asyncio.run(handler(req))
+
+  assert result['status'] == 'ok'
+  injected = result['params'].get('playlist', [])
+  # Default should contain regular effects, exclude switcher itself
+  assert 'twinkle' in injected
+  assert 'fire' in injected
+  assert 'animation_switcher' not in injected
+  # Persistence
+  saved = deps.state_manager.get_effect_params('animation_switcher')
+  assert saved.get('playlist') == injected
+
+
+def test_explicit_empty_playlist_saves_empty():
+  catalog = _build_catalog()
+  deps = _build_route_test_deps(catalog)
+  handler = _get_activate_handler(deps)
+
+  from app.api.schemas import SceneRequest
+  req = SceneRequest(effect='animation_switcher', params={'playlist': [], 'interval': 10})
+  result = asyncio.run(handler(req))
+
+  assert result['params']['playlist'] == []
+  saved = deps.state_manager.get_effect_params('animation_switcher')
+  assert saved.get('playlist') == []
+
+
+def test_restore_empty_playlist_does_not_reinject():
+  """After user explicitly saved empty playlist, activate-without-params should NOT re-inject default."""
+  catalog = _build_catalog()
+  deps = _build_route_test_deps(catalog)
+  # Pre-populate saved state with empty playlist
+  deps.state_manager.set_effect_params('animation_switcher', {'playlist': [], 'interval': 10})
+  handler = _get_activate_handler(deps)
+
+  from app.api.schemas import SceneRequest
+  req = SceneRequest(effect='animation_switcher', params=None)
+  result = asyncio.run(handler(req))
+
+  # Should restore empty playlist, not re-inject default
+  assert result['params'].get('playlist') == []
