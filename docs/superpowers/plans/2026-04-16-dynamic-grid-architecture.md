@@ -34,7 +34,8 @@
 ### Modified Files (key changes only)
 | File | Change |
 |------|--------|
-| `pi/app/core/renderer.py` | Use CompiledPixelMap, call pack_frame(), handle RENDER_SCALE |
+| `pi/app/core/renderer.py` | Use CompiledPixelMap, call pack_frame(), handle RENDER_SCALE, propagate origin to RenderState |
+| `pi/app/core/renderer.py:RenderState` | Add `origin: str` and `grid_width: int`, `grid_height: int` fields |
 | `pi/app/effects/base.py` | Remove N, no defaults, add RENDER_SCALE |
 | `pi/app/effects/engine/buffer.py` | Remove default cols/rows |
 | `pi/app/effects/generative.py` | Remove N import, use self.height |
@@ -43,12 +44,13 @@
 | `pi/app/effects/switcher.py` | Remove hardcoded height |
 | `pi/app/diagnostics/patterns.py` | Remove hardcoded constants |
 | `pi/app/preview/service.py` | Use pixel map dimensions |
-| `pi/app/transport/usb.py` | Remove default params |
-| `pi/app/models/protocol.py` | CONFIG packet payload schema |
-| `pi/app/main.py` | Load pixel map, send CONFIG, wire dimensions |
-| `pi/app/api/server.py` | Register pixel_map router |
-| `teensy/firmware/include/config.h` | Remove hardcoded geometry, add defaults |
-| `teensy/firmware/src/main.cpp` | CONFIG handler, dynamic OctoWS2811 buffers |
+| `pi/app/transport/usb.py` | Remove default params, add send_config + wait_for_config_ack |
+| `pi/app/models/protocol.py` | CONFIG packet payload, CONFIG_ACK/CONFIG_NAK packet types |
+| `pi/app/main.py` | Load pixel map, send CONFIG, wire dimensions, store in deps |
+| `pi/app/api/deps.py` (or equivalent) | Add `pixel_map_config`, `compiled_pixel_map` fields to AppDeps |
+| `pi/app/api/server.py` | Register pixel_map router, remove old setup router |
+| `teensy/firmware/include/config.h` | Remove hardcoded geometry, add defaults, add CONFIG_ACK/NAK types |
+| `teensy/firmware/src/main.cpp` | CONFIG handler with ACK/NAK, max-sized static DMAMEM allocation, EEPROM persistence |
 
 ---
 
@@ -149,6 +151,20 @@ class TestValidation:
         cfg.strips[0].segments = [
             SegmentConfig(range_start=0, range_end=2, color_order='BGR'),
             # Gap: 3-5 not covered
+        ]
+        errors = validate_pixel_map(cfg)
+        assert any('segment' in e.lower() for e in errors)
+
+    def test_negative_coordinates(self):
+        cfg = _simple_map()
+        cfg.strips[0].scanlines[0] = ScanlineConfig(start=(-1, 0), end=(-1, 2))
+        errors = validate_pixel_map(cfg)
+        assert any('negative' in e.lower() or 'non-negative' in e.lower() for e in errors)
+
+    def test_segment_range_exceeds_total_leds(self):
+        cfg = _simple_map()
+        cfg.strips[0].segments = [
+            SegmentConfig(range_start=0, range_end=99, color_order='BGR'),
         ]
         errors = validate_pixel_map(cfg)
         assert any('segment' in e.lower() for e in errors)
@@ -471,6 +487,23 @@ def validate_pixel_map(config: PixelMapConfig) -> list[str]:
         if missing:
             errors.append(f"Strip {strip.id}: segment gaps at LEDs {sorted(missing)[:5]}...")
 
+        # Coordinate non-negativity
+        for sl in strip.scanlines:
+            for coord in [sl.start, sl.end]:
+                if coord[0] < 0 or coord[1] < 0:
+                    errors.append(
+                        f"Strip {strip.id}: non-negative coordinates required, "
+                        f"got {coord}"
+                    )
+
+        # Segment range bounds
+        for seg in strip.segments:
+            if seg.range_end >= strip.total_leds:
+                errors.append(
+                    f"Strip {strip.id}: segment range_end {seg.range_end} "
+                    f">= total_leds {strip.total_leds}"
+                )
+
         # Check for duplicate grid positions
         led_idx = 0
         for sl in strip.scanlines:
@@ -584,6 +617,9 @@ origin: bottom_left
 teensy:
   outputs: 8
   max_leds_per_output: 1200
+  controller_wire_order: BGR       # OctoWS2811 configured color order
+  signal_family: ws281x_800khz     # LED signal type
+  octo_pins: [2, 14, 7, 8, 6, 20, 21, 5]  # Teensy 4.1 OctoWS2811 pin mapping
 
 strips:
   - id: 0
@@ -1065,6 +1101,7 @@ In `pi/app/core/renderer.py`:
    - Replace `map_frame_compiled` / `map_frame_fast` with `pack_frame(logical_frame, self.pixel_map)`
    - Replace `serialize_channels` / `serialize_channels_compiled` — `pack_frame` returns bytes directly
 7. Add `apply_pixel_map(pixel_map)` for hot-swapping (same pattern as old `apply_output_plan`)
+8. Propagate origin to `RenderState`: add `state.origin = pixel_map.origin` so effects can access it via `state.origin`. Add `state.grid_width` and `state.grid_height` too.
 
 - [ ] **Step 2: Update preview service**
 
@@ -1124,14 +1161,62 @@ async def send_frame(self, channel_data: bytes, channels: int = 5,
 async def send_frame(self, pixel_data: bytes) -> bool:
 ```
 
-The `pixel_data` is already the packed output from `pack_frame()`. No channel/LED params needed — the Teensy knows the layout from the CONFIG packet.
+The `pixel_data` is already the packed output from `pack_frame()`. The FRAME payload format changes post-CONFIG: no more 3-byte header (channels + leds_per_ch). The payload is just raw pixel bytes, sized to match `sum(leds_per_output[i] * 3)`. The Teensy validates the frame size against its stored CONFIG.
 
-Add a new method:
+The old `build_frame_payload(channels, leds_per_channel, channel_data)` call is replaced — `send_frame` builds the packet directly from the raw pixel bytes:
+
 ```python
-async def send_config(self, output_config: list[int]) -> bool:
-    """Send CONFIG packet to Teensy with output layout."""
+async def send_frame(self, pixel_data: bytes) -> bool:
+    """Send a FRAME packet with raw pixel data (post-CONFIG format)."""
+    if not self.connected or not self.serial:
+        return False
+    self.frame_id += 1
+    timestamp_us = int(time.monotonic() * 1_000_000) & 0xFFFFFFFFFFFFFFFF
+    packet = build_packet(
+        PacketType.FRAME, pixel_data,
+        frame_id=self.frame_id, timestamp_us=timestamp_us,
+    )
+    framed = frame_packet(packet)
+    async with self._lock:
+        try:
+            await asyncio.to_thread(self.serial.write, framed)
+            self.frames_sent += 1
+            return True
+        except (serial.SerialException, OSError) as e:
+            self.send_errors += 1
+            logger.error(f"Frame send failed: {e}")
+            self.connected = False
+            return False
+```
+
+Add CONFIG send with ACK/NAK handling:
+```python
+async def send_config(self, output_config: list[int], timeout: float = 3.0) -> bool:
+    """Send CONFIG packet and wait for ACK/NAK response."""
     payload = build_config_payload(output_config)
-    return await self.send_command(PacketType.CONFIG, payload)
+    success = await self.send_command(PacketType.CONFIG, payload)
+    if not success:
+        return False
+    # Wait for ACK/NAK response
+    response = await self._wait_for_response(
+        [PacketType.CONFIG_ACK, PacketType.CONFIG_NAK], timeout=timeout
+    )
+    if response is None:
+        logger.error("CONFIG: no response from Teensy (timeout)")
+        return False
+    if response.packet_type == PacketType.CONFIG_NAK:
+        logger.error(f"CONFIG NAK from Teensy: {response.payload}")
+        return False
+    logger.info("CONFIG ACK received — Teensy reconfigured")
+    return True
+```
+
+Also add to `protocol.py`:
+```python
+# New packet types for CONFIG response
+# Add to PacketType enum:
+CONFIG_ACK = 0x04
+CONFIG_NAK = 0x05
 ```
 
 - [ ] **Step 3: Run tests**
@@ -1170,7 +1255,15 @@ git commit -m "feat: CONFIG packet + dynamic frame sizing in transport"
    - Send CONFIG to Teensy: `await transport.send_config(compiled_pixel_map.output_config)`
    - Register effects as before (they now get width/height from pixel map via renderer)
 
-3. Store pixel_map_config and compiled_pixel_map in deps for API routes.
+3. Update `AppDeps` (in `pi/app/api/deps.py` or wherever deps are defined):
+   - Remove `installation`, `controller_profile` fields
+   - Add `pixel_map_config: PixelMapConfig` and `compiled_pixel_map: CompiledPixelMap`
+   - Store both in deps during startup: `deps.pixel_map_config = pixel_map_config`, `deps.compiled_pixel_map = compiled_pixel_map`
+
+4. Update `pi/app/api/server.py`:
+   - Remove old setup router registration (`create_setup_router`)
+   - Add pixel map router registration
+   - Remove any references to `deps.installation` or `deps.controller_profile`
 
 - [ ] **Step 2: Run the full application in dev mode**
 
@@ -1319,23 +1412,93 @@ void handleConfig(const uint8_t* payload, size_t len) {
 }
 ```
 
-4. Update `handleFrame` to validate against dynamic `frameSize`:
+4. Update `handleFrame` — post-CONFIG format has no 3-byte header, just raw pixel bytes:
 ```cpp
 void handleFrame(const uint8_t* payload, size_t len) {
-    if (len < 3) {
+    // Post-CONFIG: payload is raw pixel data, no header
+    if (len != frameSize) {
         stats.badFrame++;
         return;
     }
-    // Skip channels(1) + leds_per_ch(2) header, rest is pixel data
-    size_t pixelDataLen = len - 3;
-    if (pixelDataLen != frameSize) {
-        stats.badFrame++;
-        return;
-    }
-    memcpy(pendingFrame, payload + 3, pixelDataLen);
+    memcpy(pendingFrame, payload, len);
     pendingFrameReady = true;
     stats.framesReceived++;
 }
+```
+
+5. Add `sendAck` and `sendNak` helpers:
+```cpp
+void sendAck() {
+    // Send CONFIG_ACK packet (type 0x04, empty payload)
+    sendResponse(PKT_CONFIG_ACK, nullptr, 0);
+}
+
+void sendNak(uint8_t reason) {
+    // Send CONFIG_NAK packet (type 0x05, 1-byte reason code)
+    sendResponse(PKT_CONFIG_NAK, &reason, 1);
+}
+
+void sendResponse(uint8_t type, const uint8_t* payload, size_t len) {
+    // Build and send a response packet using existing packet infrastructure
+    // (same as sendStats/sendCaps pattern)
+    uint8_t buf[HEADER_SIZE + CRC_SIZE + 4];  // small response
+    PacketHeader hdr = {PROTOCOL_VERSION, type, 0, 0, 0, (uint32_t)len};
+    size_t total = buildPacket(buf, sizeof(buf), &hdr, payload, len);
+    Serial.write(buf, total);
+}
+```
+
+6. Add packet type constants to `config.h`:
+```cpp
+#define PKT_CONFIG_ACK  0x04
+#define PKT_CONFIG_NAK  0x05
+```
+
+7. OctoWS2811 static buffer strategy — use max-sized DMAMEM allocation:
+```cpp
+// Allocate for worst case: 8 outputs × 1200 LEDs
+DMAMEM uint8_t displayMemory[MAX_LEDS_PER_OUTPUT * TOTAL_OUTPUTS * 3];
+DMAMEM uint8_t drawingMemory[MAX_LEDS_PER_OUTPUT * TOTAL_OUTPUTS * 3];
+uint8_t pendingFrame[MAX_LEDS_PER_OUTPUT * TOTAL_OUTPUTS * 3];
+
+// OctoWS2811 initialized with default, reconfigured on CONFIG
+OctoWS2811 leds(DEFAULT_LEDS_PER_STRIP, displayMemory, drawingMemory, WS2811_BGR);
+```
+
+The `handleConfig` call to `leds.begin(maxPerStrip, ...)` reuses the same static buffers — OctoWS2811 doesn't reallocate, it just changes the active length. RAM check: `8 × 1200 × 3 × 2 = 57,600 bytes` for display+drawing memory — well within Teensy 4.1's 1MB RAM.
+
+8. EEPROM persistence:
+```cpp
+#include <EEPROM.h>
+#define EEPROM_CONFIG_ADDR 0
+#define EEPROM_MAGIC 0xPM  // "pixel map"
+
+void saveConfigToEEPROM() {
+    EEPROM.write(EEPROM_CONFIG_ADDR, EEPROM_MAGIC >> 8);
+    EEPROM.write(EEPROM_CONFIG_ADDR + 1, EEPROM_MAGIC & 0xFF);
+    EEPROM.write(EEPROM_CONFIG_ADDR + 2, activeOutputs);
+    for (int i = 0; i < TOTAL_OUTPUTS; i++) {
+        EEPROM.write(EEPROM_CONFIG_ADDR + 3 + i*2, ledsPerOutput[i] & 0xFF);
+        EEPROM.write(EEPROM_CONFIG_ADDR + 3 + i*2 + 1, ledsPerOutput[i] >> 8);
+    }
+}
+
+bool loadConfigFromEEPROM() {
+    uint16_t magic = (EEPROM.read(EEPROM_CONFIG_ADDR) << 8) | EEPROM.read(EEPROM_CONFIG_ADDR + 1);
+    if (magic != EEPROM_MAGIC) return false;
+    activeOutputs = EEPROM.read(EEPROM_CONFIG_ADDR + 2);
+    uint32_t total = 0;
+    for (int i = 0; i < TOTAL_OUTPUTS; i++) {
+        ledsPerOutput[i] = EEPROM.read(EEPROM_CONFIG_ADDR + 3 + i*2) |
+                           (EEPROM.read(EEPROM_CONFIG_ADDR + 3 + i*2 + 1) << 8);
+        total += ledsPerOutput[i];
+    }
+    totalLeds = total;
+    frameSize = total * 3;
+    return true;
+}
+```
+Call `loadConfigFromEEPROM()` in `setup()` before `leds.begin()`.
 ```
 
 - [ ] **Step 3: Build firmware**
@@ -1469,6 +1632,10 @@ def create_router(deps, require_auth) -> APIRouter:
     @router.post("/strips/{strip_id}")
     async def update_strip(strip_id: int, req: StripRequest, auth=Depends(require_auth)):
         """Update an existing strip."""
+        # Check for ID collision if ID is changing
+        if req.id != strip_id:
+            if any(s.id == req.id for s in deps.pixel_map_config.strips):
+                raise HTTPException(409, f"Strip {req.id} already exists")
         for i, s in enumerate(deps.pixel_map_config.strips):
             if s.id == strip_id:
                 deps.pixel_map_config.strips[i] = StripConfig(
@@ -1502,11 +1669,42 @@ def create_router(deps, require_auth) -> APIRouter:
         _recompile_and_apply()
         return await get_pixel_map()
 
+    @router.post("/pixel/{strip_id}/{led_index}")
+    async def set_single_pixel(strip_id: int, led_index: int, x: int, y: int, auth=Depends(require_auth)):
+        """Assign a single LED to a grid position (for edge case corrections)."""
+        # Find the strip
+        strip = None
+        for s in deps.pixel_map_config.strips:
+            if s.id == strip_id:
+                strip = s
+                break
+        if strip is None:
+            raise HTTPException(404, f"Strip {strip_id} not found")
+        if led_index < 0 or led_index >= strip.total_leds:
+            raise HTTPException(422, f"LED index {led_index} out of range [0, {strip.total_leds - 1}]")
+        # This modifies the scanlines to include a single-pixel override.
+        # Implementation: store overrides separately in the pixel map config
+        # and apply them after scanline expansion during compilation.
+        if not hasattr(strip, 'pixel_overrides'):
+            strip.pixel_overrides = {}
+        strip.pixel_overrides[led_index] = (x, y)
+        _recompile_and_apply()
+        return await get_pixel_map()
+
     @router.post("/validate")
     async def validate_map():
         """Validate current pixel map without applying."""
         errors = validate_pixel_map(deps.pixel_map_config)
         return {'valid': len(errors) == 0, 'errors': errors}
+
+    @router.get("/teensy-status")
+    async def teensy_config_status():
+        """Return Teensy config status — what config was last pushed and ACK'd."""
+        return {
+            'output_config': deps.compiled_pixel_map.output_config,
+            'teensy_connected': deps.transport.connected,
+            'last_config_ack': getattr(deps.transport, '_last_config_ack', None),
+        }
 
     return router
 ```
@@ -1655,8 +1853,17 @@ git commit -m "fix: integration fixes from hardware deployment"
 - ✅ Forward + reverse LUTs
 - ✅ Output packing with swizzle
 - ✅ Teensy CONFIG packet (runtime, no reflash)
+- ✅ CONFIG ACK/NAK handshake with defined packet types
+- ✅ EEPROM persistence on Teensy
 - ✅ RENDER_SCALE per-effect
-- ✅ Origin configurable (bottom_left default)
+- ✅ Origin configurable (bottom_left default), propagated to RenderState
 - ✅ Legacy code deletion
-- ✅ Default pixel_map.yaml matching current hardware
+- ✅ Default pixel_map.yaml matching current hardware (including electrical settings)
 - ✅ Vision auto-mapper integration noted (same data format)
+- ✅ Single-pixel edit endpoint
+- ✅ Teensy config status endpoint
+- ✅ AppDeps updated with pixel_map_config/compiled_pixel_map
+- ✅ Old setup router removed
+- ✅ Frame payload format consistent (raw bytes post-CONFIG, no 3-byte header)
+- ✅ OctoWS2811 static max-sized DMAMEM allocation (no dynamic realloc)
+- ✅ Validation: non-negative coords, segment bounds, duplicate positions
