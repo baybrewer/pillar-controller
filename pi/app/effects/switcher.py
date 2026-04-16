@@ -24,7 +24,7 @@ class AnimationSwitcher(Effect):
     self._interval = self.params.get('interval', 15)
     self._fade_duration = self.params.get('fade_duration', 2.0)
     self._shuffle = self.params.get('shuffle', False)
-    self._playlist = self.params.get('playlist', [])
+    self._playlist = []  # assigned after _effect_registry is set below
     self._playlist_params = self.params.get('playlist_params', {})
     self._effect_registry = self.params.get('_effect_registry', {})
 
@@ -35,6 +35,7 @@ class AnimationSwitcher(Effect):
     self._phase_timer = 0.0
     self._last_t = None
 
+    self._playlist = self._sanitize_playlist(self.params.get('playlist', []))
     if self._shuffle and len(self._playlist) > 1:
       random.shuffle(self._playlist)
 
@@ -120,12 +121,36 @@ class AnimationSwitcher(Effect):
       'fade_duration': self._fade_duration,
     }
 
+  def _sanitize_playlist(self, raw):
+    """Drop any entries not present in the current effect registry.
+
+    Prevents stale/renamed/removed effect names from producing silent black
+    frames or confusing status output.
+    """
+    if not raw:
+      return []
+    if not self._effect_registry:
+      return list(raw)
+    return [name for name in raw if name in self._effect_registry]
+
   def update_params(self, params):
-    """Update switcher params without resetting playlist position."""
+    """Update switcher params. Playlist changes reset position to 0."""
     if 'interval' in params:
       self._interval = params['interval']
     if 'fade_duration' in params:
       self._fade_duration = params['fade_duration']
     if 'shuffle' in params:
       self._shuffle = params['shuffle']
+    if '_effect_registry' in params and params['_effect_registry']:
+      self._effect_registry = params['_effect_registry']
+    if 'playlist' in params:
+      new_playlist = self._sanitize_playlist(list(params['playlist'] or []))
+      if new_playlist != self._playlist:
+        self._playlist = new_playlist
+        self._current_idx = 0
+        self._phase = 'playing'
+        self._phase_timer = 0.0
+        self._current_effect = None
+        self._next_effect = None
+        self._activate_current()
     self.params.update(params)
