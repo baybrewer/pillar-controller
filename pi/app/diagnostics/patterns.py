@@ -124,17 +124,17 @@ class SerpentineChase(Effect):
     for pair in range(5):
       s1 = pair * 2
       s2 = pair * 2 + 1
-      # Position along the full 2*N-LED chain
-      chain_pos = int(elapsed * 60) % (2 * N)
+      # Position along the full 344-LED chain
+      chain_pos = int(elapsed * 60) % 344
 
-      if chain_pos < N:
+      if chain_pos < 172:
         # On first strip (bottom to top)
         y = chain_pos
         if s1 < self.width:
           frame[s1, y] = (255, 255, 0)
       else:
         # On second strip (top to bottom)
-        y = (2 * N - 1) - chain_pos
+        y = 343 - chain_pos  # maps 172->171, 343->0
         if s2 < self.width:
           frame[s2, y] = (0, 255, 255)
 

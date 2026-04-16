@@ -21,7 +21,7 @@ from ..hardware_constants import (
 logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 3
-MAX_LEDS_PER_CHANNEL = 1200
+MAX_LEDS_PER_CHANNEL = 1100
 
 VALID_COLOR_ORDERS = frozenset(["RGB", "RBG", "GRB", "GBR", "BRG", "BGR"])
 VALID_DIRECTIONS = frozenset(["bottom_to_top", "top_to_bottom"])
@@ -33,7 +33,7 @@ class StripMapping:
   channel: int = 0
   offset: int = 0
   direction: str = "bottom_to_top"
-  led_count: int = LEDS_PER_STRIP
+  led_count: int = 172
   color_order: str = "BGR"
   brightness: float = 1.0
 
@@ -118,13 +118,12 @@ def migrate_v1_to_strips(data: dict) -> StripInstallation:
   for s in data.get('strips', []):
     if not s.get('enabled', True):
       continue
-    old_led_count = s.get('installed_led_count', LEDS_PER_STRIP)
     strips.append(StripMapping(
       id=len(strips),
       channel=s.get('output_channel', 0),
-      offset=s.get('output_slot', 0) * old_led_count,
+      offset=s.get('output_slot', 0) * LEDS_PER_STRIP,
       direction=s.get('direction', 'bottom_to_top'),
-      led_count=old_led_count,
+      led_count=s.get('installed_led_count', LEDS_PER_STRIP),
       color_order=s.get('color_order', CONTROLLER_WIRE_ORDER),
     ))
   return StripInstallation(schema_version=SCHEMA_VERSION, strips=strips)

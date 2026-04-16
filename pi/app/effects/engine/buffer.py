@@ -6,13 +6,11 @@ All mutation is in-place on self.data — no per-pixel allocations.
 
 import numpy as np
 
-from ...hardware_constants import LEDS_PER_STRIP
-
 
 class LEDBuffer:
   """Manages a (cols, rows, 3) uint8 pixel buffer with cylinder wrapping."""
 
-  def __init__(self, cols=10, rows=LEDS_PER_STRIP):
+  def __init__(self, cols=10, rows=172):
     self.cols = cols
     self.rows = rows
     self.data = np.zeros((cols, rows, 3), dtype=np.uint8)
