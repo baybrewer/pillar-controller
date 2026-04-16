@@ -22,8 +22,6 @@ class AppDeps:
     media_manager: MediaManager
     audio_analyzer: AudioAnalyzer
     max_upload_bytes: int = 50 * 1024 * 1024
-    # Phase 1+: setup and config services (optional for backwards compat)
-    setup_session_service: Optional[object] = None
     spatial_map: Optional[object] = None
     preview_service: Optional[object] = None
     effect_catalog: Optional[object] = None
