@@ -1,0 +1,741 @@
+# Animation Switcher Redesign Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Redesign the Animation Switcher as a true "set and forget" feature — checkbox UI for selecting effects, 5–120s interval, all sound-reactive effects labeled "SR " and grouped together.
+
+**Architecture:** Backend adds "SR " prefix to sound-reactive effect labels and supports runtime `playlist` updates. Frontend adds a checkbox list below the Animation Switcher's existing interval/fade sliders, split into "Sound Reactive" and "Other" sections (alphabetical within each). Checkbox changes POST updated playlist via the standard scene activate endpoint. Persistence piggybacks on the per-effect params store added in the previous session.
+
+**Tech Stack:** Python (FastAPI, numpy), HTML/CSS/JS (vanilla).
+
+---
+
+## File Map
+
+| File | Action | Responsibility |
+|------|--------|----------------|
+| `pi/app/effects/imported/sound.py` | Modify | Add "SR " prefix to 10 DISPLAY_NAMEs |
+| `pi/app/main.py` | Modify | Bump switcher interval max to 120; override audio_reactive labels with "SR " prefix |
+| `pi/app/effects/switcher.py` | Modify | `update_params` handles playlist; default to all-non-diagnostic when playlist empty |
+| `pi/app/ui/static/index.html` | Modify | Add switcher-controls container |
+| `pi/app/ui/static/js/app.js` | Modify | Render checkbox list; wire changes; status polling |
+| `pi/app/ui/static/css/app.css` | Modify | Section headers, checkbox rows, Select All buttons |
+| `pi/tests/test_switcher.py` | Create | Tests for playlist updates + empty-playlist default |
+
+---
+
+### Task 1: Relabel Sound Effects with "SR " Prefix
+
+**Files:**
+- Modify: `pi/app/effects/imported/sound.py` (10 DISPLAY_NAME fields)
+
+- [ ] **Step 1: Update all 10 DISPLAY_NAMEs**
+
+In `pi/app/effects/imported/sound.py`, find and replace each DISPLAY_NAME line:
+
+```python
+# Spectrum class
+DISPLAY_NAME = "Spectrum"  →  DISPLAY_NAME = "SR Spectrum"
+
+# VUMeter class
+DISPLAY_NAME = "VU Meter"  →  DISPLAY_NAME = "SR VU Meter"
+
+# BeatPulse class
+DISPLAY_NAME = "Beat Pulse"  →  DISPLAY_NAME = "SR Beat Pulse"
+
+# BassFire class
+DISPLAY_NAME = "Bass Fire"  →  DISPLAY_NAME = "SR Bass Fire"
+
+# SoundRipples class
+DISPLAY_NAME = "Sound Ripples"  →  DISPLAY_NAME = "SR Sound Ripples"
+
+# Spectrogram class
+DISPLAY_NAME = "Spectrogram"  →  DISPLAY_NAME = "SR Spectrogram"
+
+# SoundWorm class
+DISPLAY_NAME = "Sound Worm"  →  DISPLAY_NAME = "SR Sound Worm"
+
+# ParticleBurst class
+DISPLAY_NAME = "Particle Burst"  →  DISPLAY_NAME = "SR Particle Burst"
+
+# SoundPlasma class
+DISPLAY_NAME = "Sound Plasma"  →  DISPLAY_NAME = "SR Sound Plasma"
+
+# StrobeChaos class
+DISPLAY_NAME = "Strobe Chaos"  →  DISPLAY_NAME = "SR Strobe Chaos"
+```
+
+- [ ] **Step 2: Run tests**
+
+Run: `cd /Users/jim/ai/pillar-controller/pi && source .venv/bin/activate && PYTHONPATH=. pytest tests/ -x -q --ignore=tests/test_matrix_rain_perf.py --ignore=tests/test_migrations.py`
+
+Expected: all pass.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add pi/app/effects/imported/sound.py
+git commit -m "feat: add SR prefix to sound-reactive effect display names"
+```
+
+---
+
+### Task 2: Relabel audio_reactive Effects via Catalog + Bump Interval Max
+
+**Files:**
+- Modify: `pi/app/main.py` (audio_reactive registration + switcher interval max)
+- Modify: `pi/app/effects/catalog.py` (audio group labels in _build_catalog)
+
+- [ ] **Step 1: Understand current label source**
+
+The audio_reactive effects (vu_pulse, band_colors, beat_flash, energy_ring, spectral_glow) are registered in `pi/app/effects/catalog.py` within `_build_catalog`'s `AUDIO_EFFECTS` loop. Their label comes from `_name_to_label(name)` which converts `vu_pulse` → "Vu Pulse". We need to inject "SR " prefix.
+
+In `pi/app/effects/catalog.py`, find the AUDIO_EFFECTS loop inside `_build_catalog`:
+
+```python
+for name, cls in AUDIO_EFFECTS.items():
+  params = self._EFFECT_PARAMS.get(name, ())
+  self._catalog[name] = EffectMeta(
+    name=name,
+    label=_name_to_label(name),
+    group='audio',
+    description=_get_description(name, cls),
+    params=params,
+    audio_requires=('level', 'bass', 'mid', 'high', 'beat'),
+  )
+```
+
+Replace the `label=_name_to_label(name)` line with:
+
+```python
+    label=f"SR {_name_to_label(name)}",
+```
+
+Result: VU Pulse → "SR Vu Pulse", Band Colors → "SR Band Colors", Beat Flash → "SR Beat Flash", Energy Ring → "SR Energy Ring", Spectral Glow → "SR Spectral Glow".
+
+- [ ] **Step 2: Bump switcher interval max**
+
+In `pi/app/main.py`, find the Animation Switcher registration (around line 163–173):
+
+```python
+effect_catalog.register_imported('animation_switcher', EffectMeta(
+  ...
+  params=(
+    {'name': 'interval', 'label': 'Switch Time (s)', 'min': 5, 'max': 60, 'step': 1, 'default': 15, 'type': 'slider'},
+    {'name': 'fade_duration', 'label': 'Fade Duration (s)', 'min': 0.5, 'max': 5.0, 'step': 0.5, 'default': 2.0, 'type': 'slider'},
+  ),
+))
+```
+
+Change `'max': 60` to `'max': 120` on the interval slider.
+
+- [ ] **Step 3: Run tests**
+
+Run: `cd /Users/jim/ai/pillar-controller/pi && source .venv/bin/activate && PYTHONPATH=. pytest tests/ -x -q --ignore=tests/test_matrix_rain_perf.py --ignore=tests/test_migrations.py`
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add pi/app/effects/catalog.py pi/app/main.py
+git commit -m "feat: SR prefix for audio_reactive effects; switcher interval max 120s"
+```
+
+---
+
+### Task 3: Switcher Handles Runtime Playlist Updates + Default
+
+**Files:**
+- Modify: `pi/app/effects/switcher.py`
+
+- [ ] **Step 1: Update `update_params` to handle playlist**
+
+In `pi/app/effects/switcher.py`, find the `update_params` method (around line 123). Replace the entire method with:
+
+```python
+  def update_params(self, params):
+    """Update switcher params without resetting playlist position when possible."""
+    if 'interval' in params:
+      self._interval = params['interval']
+    if 'fade_duration' in params:
+      self._fade_duration = params['fade_duration']
+    if 'shuffle' in params:
+      self._shuffle = params['shuffle']
+    if 'playlist' in params:
+      new_playlist = self._resolve_playlist(params['playlist'])
+      if new_playlist != self._playlist:
+        # Playlist changed — reset to start of new list
+        self._playlist = new_playlist
+        self._current_idx = 0
+        self._phase = 'playing'
+        self._phase_timer = 0.0
+        self._next_effect = None
+        self._activate_current()
+    if '_effect_registry' in params and params['_effect_registry']:
+      self._effect_registry = params['_effect_registry']
+    self.params.update(params)
+
+  def _resolve_playlist(self, raw):
+    """Turn an empty or None playlist into the default (all non-diagnostic
+    effects except animation_switcher itself). Otherwise keep as-is."""
+    if raw:
+      return list(raw)
+    if not self._effect_registry:
+      return []
+    return [
+      name for name in sorted(self._effect_registry.keys())
+      if name != 'animation_switcher' and not name.startswith('diag_')
+    ]
+```
+
+- [ ] **Step 2: Use `_resolve_playlist` in `__init__`**
+
+Find in `__init__` (around line 27):
+```python
+    self._playlist = self.params.get('playlist', [])
+```
+
+Replace with:
+```python
+    self._playlist = []  # resolved below after _effect_registry is set
+```
+
+Then find the end of `__init__` (before `self._activate_current()`):
+```python
+    if self._shuffle and len(self._playlist) > 1:
+      random.shuffle(self._playlist)
+
+    self._activate_current()
+```
+
+Replace with:
+```python
+    # Resolve playlist now that registry is set
+    self._playlist = self._resolve_playlist(self.params.get('playlist', []))
+    if self._shuffle and len(self._playlist) > 1:
+      random.shuffle(self._playlist)
+
+    self._activate_current()
+```
+
+- [ ] **Step 3: Write tests**
+
+Create `pi/tests/test_switcher.py`:
+
+```python
+"""Tests for Animation Switcher runtime playlist updates."""
+
+import pytest
+
+from app.effects.switcher import AnimationSwitcher
+
+
+class FakeEffect:
+  """Minimal effect stub for switcher tests."""
+  def __init__(self, width=10, height=172, params=None):
+    self.width = width
+    self.height = height
+    self.params = params or {}
+
+  def render(self, t, state):
+    import numpy as np
+    return np.zeros((self.width, self.height, 3), dtype=np.uint8)
+
+
+REGISTRY = {
+  'twinkle': FakeEffect,
+  'fire': FakeEffect,
+  'plasma': FakeEffect,
+  'animation_switcher': FakeEffect,
+  'diag_sweep': FakeEffect,
+  'diag_strip_identify': FakeEffect,
+}
+
+
+def _make_switcher(playlist=None):
+  return AnimationSwitcher(
+    width=10,
+    height=172,
+    params={
+      'interval': 15,
+      'fade_duration': 2.0,
+      '_effect_registry': REGISTRY,
+      'playlist': playlist if playlist is not None else [],
+    },
+  )
+
+
+class TestDefaultPlaylist:
+  def test_empty_playlist_uses_all_non_diagnostic(self):
+    s = _make_switcher(playlist=[])
+    # Should include twinkle, fire, plasma — NOT animation_switcher or diag_*
+    assert set(s._playlist) == {'twinkle', 'fire', 'plasma'}
+
+  def test_explicit_playlist_preserved(self):
+    s = _make_switcher(playlist=['twinkle', 'fire'])
+    assert s._playlist == ['twinkle', 'fire']
+
+  def test_default_sorted_alphabetically(self):
+    s = _make_switcher(playlist=[])
+    assert s._playlist == sorted(s._playlist)
+
+
+class TestRuntimePlaylistUpdate:
+  def test_update_playlist_changes_rotation(self):
+    s = _make_switcher(playlist=['twinkle', 'fire'])
+    s.update_params({'playlist': ['plasma']})
+    assert s._playlist == ['plasma']
+
+  def test_update_playlist_resets_index(self):
+    s = _make_switcher(playlist=['twinkle', 'fire', 'plasma'])
+    s._current_idx = 2
+    s.update_params({'playlist': ['fire', 'plasma']})
+    assert s._current_idx == 0
+
+  def test_update_interval_no_playlist_reset(self):
+    s = _make_switcher(playlist=['twinkle', 'fire'])
+    s._current_idx = 1
+    s.update_params({'interval': 30})
+    assert s._current_idx == 1  # unchanged
+    assert s._interval == 30
+
+  def test_update_empty_playlist_reverts_to_default(self):
+    s = _make_switcher(playlist=['twinkle'])
+    s.update_params({'playlist': []})
+    # Empty → fall back to defaults
+    assert 'fire' in s._playlist
+    assert 'plasma' in s._playlist
+
+
+class TestStatus:
+  def test_get_switcher_status_shape(self):
+    s = _make_switcher(playlist=['twinkle', 'fire'])
+    status = s.get_switcher_status()
+    assert status['active'] is True
+    assert 'current' in status
+    assert 'playlist' in status
+    assert 'interval' in status
+    assert 'time_remaining' in status
+```
+
+- [ ] **Step 4: Run tests**
+
+Run: `cd /Users/jim/ai/pillar-controller/pi && source .venv/bin/activate && PYTHONPATH=. pytest tests/test_switcher.py -v`
+
+Expected: all 9 tests pass.
+
+Then full suite:
+`PYTHONPATH=. pytest tests/ -x -q --ignore=tests/test_matrix_rain_perf.py --ignore=tests/test_migrations.py`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add pi/app/effects/switcher.py pi/tests/test_switcher.py
+git commit -m "feat: switcher supports runtime playlist updates + default fallback"
+```
+
+---
+
+### Task 4: Frontend HTML — Switcher Controls Container
+
+**Files:**
+- Modify: `pi/app/ui/static/index.html`
+
+- [ ] **Step 1: Find active-effect-controls section**
+
+In `pi/app/ui/static/index.html`, find the `<div id="active-effect-controls">` block. The section currently contains:
+- `#active-effect-name` heading
+- `#effect-palette-wrap` (palette selector)
+- `#effect-params` (slider list)
+
+- [ ] **Step 2: Add switcher-controls block after #effect-params**
+
+After the `<div id="effect-params">` line (and its closing tag), add:
+
+```html
+          <div id="switcher-controls" class="hidden">
+            <div id="switcher-status" class="switcher-status"></div>
+            <div class="switcher-section">
+              <div class="switcher-section-header">
+                <span class="switcher-section-title">Sound Reactive</span>
+                <span class="switcher-section-actions">
+                  <button type="button" class="switcher-select-all" data-section="sr">All</button>
+                  <button type="button" class="switcher-clear" data-section="sr">None</button>
+                </span>
+              </div>
+              <div id="switcher-sr-list" class="switcher-checklist"></div>
+            </div>
+            <div class="switcher-section">
+              <div class="switcher-section-header">
+                <span class="switcher-section-title">Other</span>
+                <span class="switcher-section-actions">
+                  <button type="button" class="switcher-select-all" data-section="other">All</button>
+                  <button type="button" class="switcher-clear" data-section="other">None</button>
+                </span>
+              </div>
+              <div id="switcher-other-list" class="switcher-checklist"></div>
+            </div>
+          </div>
+```
+
+- [ ] **Step 3: Commit (HTML only — CSS/JS come next)**
+
+```bash
+git add pi/app/ui/static/index.html
+git commit -m "feat: switcher controls container in effect panel"
+```
+
+---
+
+### Task 5: CSS Styles for Switcher
+
+**Files:**
+- Modify: `pi/app/ui/static/css/app.css`
+
+- [ ] **Step 1: Add styles at end of file**
+
+Append to `pi/app/ui/static/css/app.css`:
+
+```css
+/* Animation Switcher controls */
+#switcher-controls {
+  margin-top: 14px;
+}
+
+.switcher-status {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 6px 10px;
+  background: var(--surface2);
+  border-radius: 6px;
+  margin-bottom: 10px;
+  min-height: 20px;
+}
+
+.switcher-section {
+  margin-bottom: 12px;
+}
+
+.switcher-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.switcher-section-title {
+  font-weight: bold;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.switcher-section-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.switcher-section-actions button {
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.switcher-section-actions button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.switcher-checklist {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px 12px;
+}
+
+.switcher-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.switcher-check-row:hover {
+  background: var(--surface2);
+}
+
+.switcher-check-row input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.switcher-check-row.checked {
+  color: var(--accent);
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add pi/app/ui/static/css/app.css
+git commit -m "style: switcher controls checklist styles"
+```
+
+---
+
+### Task 6: Frontend JS — Build Checkboxes and Wire Up
+
+**Files:**
+- Modify: `pi/app/ui/static/js/app.js`
+
+- [ ] **Step 1: Add switcher state at top of file**
+
+Near the other module state declarations (search for `let spectrumTarget`), add:
+
+```javascript
+let switcherStatusInterval = null;
+let switcherSelectedEffects = new Set();
+```
+
+- [ ] **Step 2: Add renderSwitcherControls() function**
+
+Before the `activateEffect()` function (search `async function activateEffect`), add:
+
+```javascript
+function classifyEffectForSwitcher(name, meta) {
+  // Exclude effects that can't be in a rotation
+  if (name === 'animation_switcher') return null;
+  if (name.startsWith('diag_')) return null;
+  if (meta.group === 'diagnostic') return null;
+  // SR section = group is 'sound' or 'audio'
+  if (meta.group === 'sound' || meta.group === 'audio') return 'sr';
+  return 'other';
+}
+
+function renderSwitcherControls() {
+  const wrap = document.getElementById('switcher-controls');
+  if (!wrap || !effectsCatalog) return;
+
+  // Partition and sort alphabetically by label
+  const srEntries = [];
+  const otherEntries = [];
+  for (const [name, meta] of Object.entries(effectsCatalog)) {
+    const section = classifyEffectForSwitcher(name, meta);
+    if (section === 'sr') srEntries.push([name, meta]);
+    else if (section === 'other') otherEntries.push([name, meta]);
+  }
+  const byLabel = (a, b) => (a[1].label || a[0]).localeCompare(b[1].label || b[0]);
+  srEntries.sort(byLabel);
+  otherEntries.sort(byLabel);
+
+  const build = (container, entries) => {
+    container.innerHTML = '';
+    for (const [name, meta] of entries) {
+      const row = document.createElement('label');
+      row.className = 'switcher-check-row';
+      row.dataset.name = name;
+      const checked = switcherSelectedEffects.has(name);
+      if (checked) row.classList.add('checked');
+      row.innerHTML = `
+        <input type="checkbox" ${checked ? 'checked' : ''} data-name="${name}">
+        <span>${meta.label || name}</span>
+      `;
+      container.appendChild(row);
+    }
+  };
+
+  build(document.getElementById('switcher-sr-list'), srEntries);
+  build(document.getElementById('switcher-other-list'), otherEntries);
+
+  // Wire individual checkboxes
+  wrap.querySelectorAll('.switcher-check-row input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const name = cb.dataset.name;
+      if (cb.checked) switcherSelectedEffects.add(name);
+      else switcherSelectedEffects.delete(name);
+      cb.closest('.switcher-check-row').classList.toggle('checked', cb.checked);
+      scheduleSwitcherSave();
+    });
+  });
+
+  // Section Select All / Clear
+  wrap.querySelectorAll('.switcher-select-all').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const section = btn.dataset.section;
+      const entries = section === 'sr' ? srEntries : otherEntries;
+      entries.forEach(([name]) => switcherSelectedEffects.add(name));
+      renderSwitcherControls();
+      scheduleSwitcherSave();
+    });
+  });
+  wrap.querySelectorAll('.switcher-clear').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const section = btn.dataset.section;
+      const entries = section === 'sr' ? srEntries : otherEntries;
+      entries.forEach(([name]) => switcherSelectedEffects.delete(name));
+      renderSwitcherControls();
+      scheduleSwitcherSave();
+    });
+  });
+}
+
+let switcherSaveDebounce = null;
+function scheduleSwitcherSave() {
+  clearTimeout(switcherSaveDebounce);
+  switcherSaveDebounce = setTimeout(() => {
+    if (activeEffectName !== 'animation_switcher') return;
+    const playlist = Array.from(switcherSelectedEffects);
+    const params = { ...currentEffectParams, playlist };
+    currentEffectParams = params;
+    api('POST', '/api/scenes/activate', { effect: 'animation_switcher', params });
+  }, 300);
+}
+
+async function pollSwitcherStatus() {
+  if (activeEffectName !== 'animation_switcher') return;
+  const status = await api('GET', '/api/scenes/switcher/status');
+  if (!status || !status.active) return;
+  const el = document.getElementById('switcher-status');
+  if (!el) return;
+  const current = status.current;
+  const currentLabel = (effectsCatalog && effectsCatalog[current])
+    ? effectsCatalog[current].label : current;
+  const remaining = Math.round(status.time_remaining || 0);
+  if (status.phase === 'fading') {
+    const nextLabel = (effectsCatalog && effectsCatalog[status.next])
+      ? effectsCatalog[status.next].label : status.next;
+    el.textContent = `Crossfading ${currentLabel} → ${nextLabel}`;
+  } else {
+    el.textContent = `Now playing: ${currentLabel} — switching in ${remaining}s`;
+  }
+}
+
+function startSwitcherStatusPolling() {
+  stopSwitcherStatusPolling();
+  pollSwitcherStatus();
+  switcherStatusInterval = setInterval(pollSwitcherStatus, 2000);
+}
+
+function stopSwitcherStatusPolling() {
+  if (switcherStatusInterval) {
+    clearInterval(switcherStatusInterval);
+    switcherStatusInterval = null;
+  }
+}
+```
+
+- [ ] **Step 3: Show/hide switcher controls in showEffectControls**
+
+Find the `showEffectControls(name, meta)` function. At the top (after the existing `paramsDiv.innerHTML = ''` line), add:
+
+```javascript
+  // Switcher-specific UI
+  const switcherWrap = document.getElementById('switcher-controls');
+  if (name === 'animation_switcher') {
+    // Initialize selected set from current params
+    const saved = currentEffectParams.playlist;
+    switcherSelectedEffects = new Set(Array.isArray(saved) ? saved : []);
+    switcherWrap.classList.remove('hidden');
+    renderSwitcherControls();
+    startSwitcherStatusPolling();
+  } else {
+    switcherWrap.classList.add('hidden');
+    stopSwitcherStatusPolling();
+  }
+```
+
+- [ ] **Step 4: Run tests**
+
+Run: `cd /Users/jim/ai/pillar-controller/pi && source .venv/bin/activate && PYTHONPATH=. pytest tests/ -x -q --ignore=tests/test_matrix_rain_perf.py --ignore=tests/test_migrations.py`
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add pi/app/ui/static/js/app.js
+git commit -m "feat: switcher checkbox UI with SR/Other sections and status polling"
+```
+
+---
+
+### Task 7: Deploy and Verify
+
+- [ ] **Step 1: Deploy**
+
+```bash
+cd /Users/jim/ai/pillar-controller && bash pi/scripts/deploy.sh ledfanatic.local
+```
+
+- [ ] **Step 2: Verify SR labels in catalog**
+
+```bash
+ssh jim@ledfanatic.local "sleep 3 && curl -s http://localhost:80/api/effects/catalog | python3 -c \"
+import sys, json
+d = json.load(sys.stdin)
+sr_labels = sorted(e['label'] for e in d['effects'].values() if e['label'].startswith('SR '))
+print('SR labels:', sr_labels)
+print('count:', len(sr_labels))
+\""
+```
+
+Expected: ~20 effects prefixed with "SR ".
+
+- [ ] **Step 3: Verify switcher interval max is 120**
+
+```bash
+ssh jim@ledfanatic.local "curl -s http://localhost:80/api/effects/animation_switcher | python3 -c \"
+import sys, json
+d = json.load(sys.stdin)
+for p in d.get('params', []):
+  if p['name'] == 'interval':
+    print(f'interval max: {p[\"max\"]}')
+\""
+```
+
+Expected: `interval max: 120`.
+
+- [ ] **Step 4: Activate switcher with custom playlist**
+
+```bash
+ssh jim@ledfanatic.local "curl -s -X POST http://localhost:80/api/scenes/activate -H 'Content-Type: application/json' -d '{\"effect\":\"animation_switcher\",\"params\":{\"interval\":10,\"playlist\":[\"twinkle\",\"fire\",\"plasma\"]}}' | head -c 200"
+echo
+sleep 2
+ssh jim@ledfanatic.local "curl -s http://localhost:80/api/scenes/switcher/status | python3 -m json.tool"
+```
+
+Expected: status shows active=true, current in the playlist, playlist=[twinkle,fire,plasma], interval=10.
+
+- [ ] **Step 5: Verify playlist update at runtime**
+
+```bash
+ssh jim@ledfanatic.local "curl -s -X POST http://localhost:80/api/scenes/activate -H 'Content-Type: application/json' -d '{\"effect\":\"animation_switcher\",\"params\":{\"playlist\":[\"spark\"]}}' > /dev/null; sleep 1; curl -s http://localhost:80/api/scenes/switcher/status | python3 -c \"import sys,json; d=json.load(sys.stdin); print('playlist:', d['playlist'])\""
+```
+
+Expected: `playlist: ['spark']`.
+
+- [ ] **Step 6: Open UI and verify the checkbox UI**
+
+Open the UI in a browser. Click Effects → Animation Switcher. Verify:
+- Sliders appear (interval + fade_duration)
+- Two sections: Sound Reactive (with SR-prefixed effects, sorted A-Z) and Other (regular effects, sorted A-Z)
+- Checking/unchecking updates the rotation; status line updates every 2s
+- "All" / "None" buttons per section work
+
+- [ ] **Step 7: Full regression test**
+
+Activate a few non-switcher effects and verify they still work:
+
+```bash
+for e in twinkle fire spectrum sr_matrix_rain; do
+  ssh jim@ledfanatic.local "curl -s -X POST http://localhost:80/api/scenes/activate -H 'Content-Type: application/json' -d '{\"effect\":\"$e\"}' > /dev/null; sleep 1; sudo journalctl -u pillar --no-pager --since '3 seconds ago' | grep -ciE 'error|traceback' || true"
+  echo "$e OK"
+done
+```
+
+Expected: all zero errors.
