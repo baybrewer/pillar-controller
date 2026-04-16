@@ -41,3 +41,8 @@ class AudioConfigRequest(BaseModel):
     bass_sensitivity: Optional[float] = None
     mid_sensitivity: Optional[float] = None
     treble_sensitivity: Optional[float] = None
+
+
+class ChannelConfigRequest(BaseModel):
+    color_order: Optional[str] = None
+    led_count: Optional[int] = None
