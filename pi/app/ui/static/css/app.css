@@ -646,8 +646,6 @@ select {
   display: none;
 }
 
-/* (Strip table styles replaced by .strip-card accordion styles below) */
-
 /* Focus-visible for keyboard accessibility */
 button:focus-visible,
 select:focus-visible,
@@ -812,106 +810,55 @@ input:focus-visible {
   margin-top: 8px;
 }
 
-/* Setup accordion cards */
-#strip-cards {
+/* Channel config table */
+#channel-table {
+  width: 100%;
+  border-collapse: collapse;
   margin-top: 12px;
 }
 
-.strip-card {
-  margin-bottom: 6px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.strip-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  background: var(--surface2);
-  cursor: pointer;
-  font-size: 13px;
-  gap: 8px;
-}
-
-.strip-card-header .strip-summary {
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.strip-card-header .expand-icon {
-  flex-shrink: 0;
-  font-size: 11px;
+#channel-table th {
+  text-align: left;
+  padding: 8px;
+  font-size: 12px;
   color: var(--text-dim);
-  transition: transform 0.15s;
+  border-bottom: 1px solid var(--border);
 }
 
-.strip-card.expanded .expand-icon {
-  transform: rotate(90deg);
+#channel-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
 }
 
-.strip-card-body {
-  padding: 12px;
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+#channel-table tr.unused td {
+  opacity: 0.4;
 }
 
-.strip-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.strip-field label {
-  font-size: 13px;
-  color: var(--text-dim);
-  min-width: 90px;
-  flex-shrink: 0;
-}
-
-.strip-field input[type="text"],
-.strip-field input[type="number"] {
-  flex: 1;
+#channel-table select,
+#channel-table input[type="number"] {
+  width: 100%;
   padding: 8px;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
   font-size: 14px;
-  min-width: 0;
 }
 
-.strip-field input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--accent);
+#channel-table .ch-label {
+  font-weight: bold;
+  font-size: 16px;
+  text-align: center;
 }
 
-.strip-field select {
-  flex: 1;
-  padding: 8px;
-  min-width: 0;
-}
-
-.strip-field input.invalid,
-.strip-field select.invalid {
-  border-color: var(--danger);
-  box-shadow: 0 0 4px rgba(192, 57, 43, 0.4);
-}
-
-#setup-validation-msg {
+.status-msg {
   font-size: 13px;
-  padding: 6px 0;
   color: var(--success);
+  min-height: 20px;
+  margin-bottom: 8px;
 }
 
-#setup-validation-msg.has-errors {
+.status-msg.error {
   color: var(--danger);
 }
 

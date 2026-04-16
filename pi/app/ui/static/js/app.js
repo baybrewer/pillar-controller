@@ -719,7 +719,7 @@ function initSystem() {
         section.classList.remove('hidden');
         section.classList.add('active');
       }
-      if (btn.dataset.section === 'system-setup') loadSetupStatus();
+      if (btn.dataset.section === 'system-setup') loadChannelConfig();
     });
   });
 
@@ -728,250 +728,75 @@ function initSystem() {
 
 // --- Setup ---
 
-let setupSessionId = null;
+async function loadChannelConfig() {
+  const data = await api('GET', '/api/setup/channels');
+  if (!data || !data.channels) return;
 
-async function loadSetupStatus() {
-  const data = await api('GET', '/api/setup/session/status');
-  if (!data) return;
+  const tbody = document.getElementById('channel-rows');
+  tbody.innerHTML = '';
 
-  if (data.active) {
-    setupSessionId = data.session_id;
-    showSetupActive();
-    await loadStripInventory();
-  } else {
-    setupSessionId = null;
-    showSetupInactive();
-  }
-}
+  const colorOrders = ['RGB','RBG','GRB','GBR','BRG','BGR'];
 
-function showSetupActive() {
-  document.getElementById('setup-status-msg').textContent = `Session active: ${setupSessionId}`;
-  document.getElementById('setup-start-btn').classList.add('hidden');
-  document.getElementById('setup-cancel-btn').classList.remove('hidden');
-  document.getElementById('setup-commit-btn').classList.remove('hidden');
-  document.getElementById('setup-strip-inventory').classList.remove('hidden');
-}
+  for (const ch of data.channels) {
+    const tr = document.createElement('tr');
+    if (ch.led_count === 0) tr.className = 'unused';
+    tr.dataset.channel = ch.channel;
 
-function showSetupInactive() {
-  document.getElementById('setup-status-msg').textContent = 'No active session';
-  document.getElementById('setup-start-btn').classList.remove('hidden');
-  document.getElementById('setup-cancel-btn').classList.add('hidden');
-  document.getElementById('setup-commit-btn').classList.add('hidden');
-  document.getElementById('setup-strip-inventory').classList.add('hidden');
-}
-
-let setupStripsCache = [];
-let setupStageTimer = null;
-
-async function loadStripInventory() {
-  const data = await api('GET', '/api/setup/installation');
-  if (!data || !data.strips) return;
-  setupStripsCache = data.strips;
-
-  const container = document.getElementById('strip-cards');
-  container.innerHTML = '';
-
-  for (const strip of data.strips) {
-    const dirArrow = strip.direction === 'bottom_to_top' ? '\u2191' : '\u2193';
-    const card = document.createElement('div');
-    card.className = 'strip-card';
-    card.dataset.id = strip.id;
-
-    const colorOrders = ['RGB','RBG','GRB','GBR','BRG','BGR'];
     const colorOpts = colorOrders.map(o =>
-      `<option value="${o}" ${o === strip.color_order ? 'selected' : ''}>${o}</option>`
+      `<option value="${o}" ${o === ch.color_order ? 'selected' : ''}>${o}</option>`
     ).join('');
 
-    const dirOpts = `
-      <option value="bottom_to_top" ${strip.direction === 'bottom_to_top' ? 'selected' : ''}>\u2191 Bottom\u2192Top</option>
-      <option value="top_to_bottom" ${strip.direction === 'top_to_bottom' ? 'selected' : ''}>\u2193 Top\u2192Bottom</option>
+    tr.innerHTML = `
+      <td class="ch-label">${ch.channel}</td>
+      <td><select data-channel="${ch.channel}" data-field="color_order">${colorOpts}</select></td>
+      <td><input type="number" data-channel="${ch.channel}" data-field="led_count" value="${ch.led_count}" min="0" max="1100" step="1"></td>
     `;
-
-    const chipsets = ['WS2812B','WS2812','WS2811','SK6812','WS2813','WS2815'];
-    const chipOpts = chipsets.map(c =>
-      `<option value="${c}" ${c === (strip.chipset || 'WS2812B') ? 'selected' : ''}>${c}</option>`
-    ).join('');
-
-    card.innerHTML = `
-      <div class="strip-card-header">
-        <span class="strip-summary">${strip.label} &mdash; Ch${strip.output_channel}:${strip.output_slot} ${dirArrow} ${strip.installed_led_count} LEDs ${strip.color_order}</span>
-        <span class="expand-icon">\u25B6</span>
-      </div>
-      <div class="strip-card-body" hidden>
-        <div class="strip-field"><label>Label</label><input type="text" value="${strip.label}" data-field="label" data-id="${strip.id}" maxlength="10"></div>
-        <div class="strip-field"><label>Enabled</label><input type="checkbox" ${strip.enabled ? 'checked' : ''} data-field="enabled" data-id="${strip.id}"></div>
-        <div class="strip-field"><label>Logical Order</label><input type="number" value="${strip.logical_order !== undefined ? strip.logical_order : strip.id}" data-field="logical_order" data-id="${strip.id}" min="0" max="9"></div>
-        <div class="strip-field"><label>LEDs</label><input type="number" value="${strip.installed_led_count}" data-field="installed_led_count" data-id="${strip.id}" min="0" max="172"></div>
-        <div class="strip-field"><label>Color Order</label><select data-field="color_order" data-id="${strip.id}">${colorOpts}</select></div>
-        <div class="strip-field"><label>Direction</label><select data-field="direction" data-id="${strip.id}">${dirOpts}</select></div>
-        <div class="strip-field"><label>Channel</label><input type="number" value="${strip.output_channel}" data-field="output_channel" data-id="${strip.id}" min="0" max="4"></div>
-        <div class="strip-field"><label>Slot</label><input type="number" value="${strip.output_slot}" data-field="output_slot" data-id="${strip.id}" min="0" max="1"></div>
-        <div class="strip-field"><label>Chipset</label><select data-field="chipset" data-id="${strip.id}">${chipOpts}</select></div>
-      </div>
-    `;
-    container.appendChild(card);
+    tbody.appendChild(tr);
   }
 
-  // Accordion behavior
-  container.querySelectorAll('.strip-card-header').forEach(header => {
-    header.addEventListener('click', () => {
-      const card = header.closest('.strip-card');
-      const body = card.querySelector('.strip-card-body');
-      const wasHidden = body.hidden;
-      // Collapse all
-      container.querySelectorAll('.strip-card').forEach(c => {
-        c.querySelector('.strip-card-body').hidden = true;
-        c.classList.remove('expanded');
-      });
-      if (wasHidden) {
-        body.hidden = false;
-        card.classList.add('expanded');
-      }
+  // Attach change handlers
+  tbody.querySelectorAll('select, input').forEach(el => {
+    let debounce = null;
+    el.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => updateChannel(el), 200);
+    });
+    el.addEventListener('change', () => {
+      clearTimeout(debounce);
+      updateChannel(el);
     });
   });
-
-  // Attach change handlers for auto-staging
-  container.querySelectorAll('input, select').forEach(el => {
-    el.addEventListener('change', () => stageStripUpdate(el));
-  });
-
-  validateSetupStrips();
 }
 
-function stageStripUpdate(el) {
-  const id = parseInt(el.dataset.id);
+async function updateChannel(el) {
+  const ch = parseInt(el.dataset.channel);
   const field = el.dataset.field;
-  let value;
+  const value = field === 'led_count' ? parseInt(el.value) : el.value;
 
-  if (el.type === 'checkbox') {
-    value = el.checked;
-  } else if (el.type === 'number') {
-    value = parseInt(el.value);
+  const body = {};
+  body[field] = value;
+
+  const status = document.getElementById('channel-status');
+  const result = await api('POST', `/api/setup/channels/${ch}`, body);
+  if (result && result.status === 'ok') {
+    status.textContent = `Channel ${ch} updated`;
+    status.className = 'status-msg';
+    // Update unused styling
+    const row = el.closest('tr');
+    if (row) {
+      const ledInput = row.querySelector('[data-field="led_count"]');
+      const count = ledInput ? parseInt(ledInput.value) : 0;
+      row.classList.toggle('unused', count === 0);
+    }
+    setTimeout(() => { status.textContent = ''; }, 2000);
   } else {
-    value = el.value;
+    status.textContent = 'Error saving channel config';
+    status.className = 'status-msg error';
   }
-
-  // Update local cache
-  const cached = setupStripsCache.find(s => s.id === id);
-  if (cached) cached[field] = value;
-
-  // Update summary in card header
-  const card = el.closest('.strip-card');
-  if (card && cached) {
-    const dirArrow = cached.direction === 'bottom_to_top' ? '\u2191' : '\u2193';
-    card.querySelector('.strip-summary').innerHTML =
-      `${cached.label} &mdash; Ch${cached.output_channel}:${cached.output_slot} ${dirArrow} ${cached.installed_led_count} LEDs ${cached.color_order}`;
-  }
-
-  // Client-side validation
-  const valid = validateSetupStrips();
-
-  // Debounce PUT to server
-  clearTimeout(setupStageTimer);
-  setupStageTimer = setTimeout(async () => {
-    if (!setupSessionId) return;
-    const update = { id };
-    update[field] = value;
-    await api('PUT', '/api/setup/session/installation', {
-      session_id: setupSessionId,
-      strips: [update],
-    });
-  }, 300);
-}
-
-function validateSetupStrips() {
-  const msg = document.getElementById('setup-validation-msg');
-  const errors = [];
-
-  // Clear all invalid states
-  document.querySelectorAll('#strip-cards .invalid').forEach(el => el.classList.remove('invalid'));
-
-  // Check duplicate logical orders among enabled strips
-  const enabledStrips = setupStripsCache.filter(s => s.enabled);
-  const logOrders = enabledStrips.map(s => s.logical_order !== undefined ? s.logical_order : s.id);
-  const logOrderSet = new Set(logOrders);
-  if (logOrderSet.size < logOrders.length) {
-    errors.push('Duplicate logical orders among enabled strips');
-    // Mark duplicates
-    const seen = {};
-    for (const s of enabledStrips) {
-      const lo = s.logical_order !== undefined ? s.logical_order : s.id;
-      if (seen[lo]) {
-        markFieldInvalid(s.id, 'logical_order');
-        markFieldInvalid(seen[lo], 'logical_order');
-      }
-      seen[lo] = s.id;
-    }
-  }
-
-  // Check duplicate channel/slot pairs
-  const chSlots = enabledStrips.map(s => `${s.output_channel}:${s.output_slot}`);
-  const chSlotSet = new Set(chSlots);
-  if (chSlotSet.size < chSlots.length) {
-    errors.push('Duplicate channel/slot pairs');
-    const seen = {};
-    for (const s of enabledStrips) {
-      const key = `${s.output_channel}:${s.output_slot}`;
-      if (seen[key]) {
-        markFieldInvalid(s.id, 'output_channel');
-        markFieldInvalid(s.id, 'output_slot');
-        markFieldInvalid(seen[key], 'output_channel');
-        markFieldInvalid(seen[key], 'output_slot');
-      }
-      seen[key] = s.id;
-    }
-  }
-
-  // Check LED count range
-  for (const s of setupStripsCache) {
-    if (s.installed_led_count < 0 || s.installed_led_count > 172) {
-      errors.push(`Strip ${s.id}: LED count out of range`);
-      markFieldInvalid(s.id, 'installed_led_count');
-    }
-  }
-
-  if (errors.length === 0) {
-    msg.textContent = 'All strips valid';
-    msg.className = '';
-    msg.id = 'setup-validation-msg';
-  } else {
-    msg.textContent = errors.join('; ');
-    msg.className = 'has-errors';
-    msg.id = 'setup-validation-msg';
-  }
-
-  return errors.length === 0;
-}
-
-function markFieldInvalid(stripId, fieldName) {
-  const el = document.querySelector(`[data-id="${stripId}"][data-field="${fieldName}"]`);
-  if (el) el.classList.add('invalid');
 }
 
 function initSetup() {
-  document.getElementById('setup-start-btn').addEventListener('click', async () => {
-    const data = await api('POST', '/api/setup/session/start');
-    if (data && data.session_id) {
-      setupSessionId = data.session_id;
-      showSetupActive();
-      await loadStripInventory();
-    }
-  });
-
-  document.getElementById('setup-cancel-btn').addEventListener('click', async () => {
-    await api('POST', '/api/setup/session/cancel');
-    setupSessionId = null;
-    showSetupInactive();
-  });
-
-  document.getElementById('setup-commit-btn').addEventListener('click', async () => {
-    if (!setupSessionId) return;
-    const data = await api('POST', '/api/setup/session/commit', { session_id: setupSessionId });
-    if (data && data.status === 'committed') {
-      setupSessionId = null;
-      showSetupInactive();
-    }
-  });
+  // Channel config loaded on demand when setup section becomes visible
 }
 
 // --- Brightness ---

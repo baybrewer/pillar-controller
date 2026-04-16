@@ -285,25 +285,22 @@
                 <span class="help-icon">?</span> How to use this page
               </button>
               <div class="help-content" hidden>
-                <p>Configure your LED strip installation.</p>
-                <p>This is where you tell the controller about your physical LED hardware. Changes here affect how animations are mapped to your strips.</p>
-                <p>Start a Setup Session to begin editing. Each strip card shows: Label (a friendly name), Enabled (whether this strip is active), Logical Order (render priority), LEDs (how many are installed, max 172), Color (native byte order, usually BGR for WS2812B), Direction (wiring direction), Channel/Slot (electrical output), and Chipset (LED chip type).</p>
-                <p>Tap a card to expand and edit its fields. Changes auto-stage as you edit. Tap "Commit Changes" to save and apply, or "Cancel" to discard. Changes take effect immediately.</p>
+                <p>Configure your OctoWS2811 output channels.</p>
+                <p>Each channel can drive up to 1100 LEDs. Set the color order to match your LED strips (usually BGR for WS2812B). Set LED count to 0 for unused channels. Changes apply immediately.</p>
               </div>
             </div>
-            <h3>Installation Setup</h3>
-            <p id="setup-status-msg">No active session</p>
-            <div id="setup-controls">
-              <button id="setup-start-btn" class="action-btn" data-tooltip="Configure strip count, color order, and mapping">Start Setup Session</button>
-              <button id="setup-cancel-btn" class="action-btn secondary hidden">Cancel Setup</button>
-              <button id="setup-commit-btn" class="action-btn hidden">Commit Changes</button>
-            </div>
-
-            <!-- Strip inventory accordion (shown during active session) -->
-            <div id="setup-strip-inventory" class="hidden">
-              <p id="setup-validation-msg"></p>
-              <div id="strip-cards"></div>
-            </div>
+            <h3>Channel Configuration</h3>
+            <div id="channel-status" class="status-msg"></div>
+            <table id="channel-table">
+              <thead>
+                <tr>
+                  <th>Ch</th>
+                  <th>Color Order</th>
+                  <th>LED Count</th>
+                </tr>
+              </thead>
+              <tbody id="channel-rows"></tbody>
+            </table>
           </div>
 
           <!-- Admin section -->
