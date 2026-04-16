@@ -153,6 +153,104 @@ class SRFeldstein(Effect):
     return max(0.0, dt)
 
 
+# ═══════════════════════════════════════════════════════════════════
+#  SR LAVA LAMP
+# ═══════════════════════════════════════════════════════════════════
+
+class SRLavaLamp(Effect):
+  """Sound-reactive Lava Lamp: bass scales blob size, beat pulls blobs
+  toward vertical center, drops temporarily add blobs (max 12)."""
+
+  CATEGORY = "sound"
+  DISPLAY_NAME = "SR Lava Lamp"
+  DESCRIPTION = "Audio-reactive blobs — bass size, beat pulse, drop surge"
+  PALETTE_SUPPORT = True
+
+  PARAMS = [
+    _Param("Gain", "gain", 0.2, 5.0, 0.1, 1.0),
+    _Param("Speed", "speed", 0.05, 2.0, 0.05, 0.3),
+    _Param("Blobs", "blobs", 2, 12, 1, 5),
+    _Param("Size", "size", 0.3, 3.0, 0.1, 1.0),
+  ]
+  _SCALAR_PARAMS = {"gain": 1.0, "speed": 0.3, "blobs": 5, "size": 1.0, "palette": 0}
+  NATIVE_WIDTH = 10
+
+  def __init__(self, width=10, height=N, params=None):
+    super().__init__(width, height, params)
+    self._audio_adapter = AudioCompatAdapter()
+    self.buf = LEDBuffer(width, height)
+    self._t = 0.0
+    self._last_t = None
+    self._blob_seeds = [
+      (random.random() * 100, random.random() * 100) for _ in range(12)
+    ]
+    self._drop_timer = 0.0
+    self._beat_pull = 0.0
+
+  def render(self, t, state):
+    dt_ms = self._calc_dt_ms(t)
+    dt_s = dt_ms * 0.001
+    raw = state._audio_lock_free
+    audio = self._audio_adapter.adapt(raw, t)
+
+    gain = self.params.get("gain", 1.0)
+    speed = self.params.get("speed", 0.3)
+    base_blobs = int(self.params.get("blobs", 5))
+    base_size = self.params.get("size", 1.0)
+    pal_idx = _get_pal_idx(self.params)
+
+    # Audio modulations
+    size = base_size * (1.0 + audio.bass * gain * 1.0)
+    if audio.drop:
+      self._drop_timer = 1.5
+    self._drop_timer = max(0.0, self._drop_timer - dt_s)
+    extra_blobs = int(4 * min(1.0, self._drop_timer / 1.5))
+    num_blobs = min(12, base_blobs + extra_blobs)
+
+    if audio.beat:
+      self._beat_pull = 1.0
+    self._beat_pull *= 0.9 ** (dt_s * 60)
+
+    self._t += dt_s * speed
+    tt = self._t
+    cols = self.width
+    rows = self.height
+
+    x_g = np.arange(cols, dtype=np.float64)[:, np.newaxis]
+    y_g = np.arange(rows, dtype=np.float64)[np.newaxis, :]
+
+    size_x = max(1.0, size * 2)
+    size_y = max(1.0, size * 25)
+
+    val = np.zeros((cols, rows), dtype=np.float64)
+    for bi in range(num_blobs):
+      sx, sy = self._blob_seeds[bi]
+      bx = (cols / 2) + math.sin(tt * 0.7 + sx * 6.28) * cols * 0.4
+      by = (rows / 2) + math.sin(tt * 0.3 + sy * 6.28) * rows * 0.4
+      # Beat pull: blend by toward rows/2
+      by = by * (1.0 - self._beat_pull * 0.5 * gain) + (rows / 2) * (self._beat_pull * 0.5 * gain)
+      dx = (x_g - bx) / size_x
+      dy = (y_g - by) / size_y
+      dist_sq = dx * dx + dy * dy
+      val += 1.0 / (1.0 + dist_sq * 3)
+
+    val = np.clip(val, 0.0, 1.0)
+    hue = val * 0.8 + 0.1
+    rgb = pal_color_grid(pal_idx, hue)
+    self.buf.data = (rgb.astype(np.float32) * val[..., np.newaxis]).clip(0, 255).astype(np.uint8)
+
+    return self.buf.get_frame()
+
+  def _calc_dt_ms(self, t):
+    if self._last_t is None:
+      self._last_t = t
+      return 16.67
+    dt = (t - self._last_t) * 1000.0
+    self._last_t = t
+    return max(0.0, dt)
+
+
 SOUND_VARIANTS_EFFECTS = {
   'sr_feldstein': SRFeldstein,
+  'sr_lava_lamp': SRLavaLamp,
 }
