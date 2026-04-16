@@ -91,6 +91,29 @@
               <div id="effect-palette-wrap" class="hidden">
                 <label>Palette <select id="effect-palette-select"></select></label>
               </div>
+              <div id="switcher-controls" class="hidden">
+                <div id="switcher-status" class="switcher-status"></div>
+                <div class="switcher-section">
+                  <div class="switcher-section-header">
+                    <span class="switcher-section-title">Sound Reactive</span>
+                    <span class="switcher-section-actions">
+                      <button type="button" class="switcher-select-all" data-section="sr">All</button>
+                      <button type="button" class="switcher-clear" data-section="sr">None</button>
+                    </span>
+                  </div>
+                  <div id="switcher-sr-list" class="switcher-checklist"></div>
+                </div>
+                <div class="switcher-section">
+                  <div class="switcher-section-header">
+                    <span class="switcher-section-title">Other</span>
+                    <span class="switcher-section-actions">
+                      <button type="button" class="switcher-select-all" data-section="other">All</button>
+                      <button type="button" class="switcher-clear" data-section="other">None</button>
+                    </span>
+                  </div>
+                  <div id="switcher-other-list" class="switcher-checklist"></div>
+                </div>
+              </div>
             </div>
           </div>
           <!-- Right side: live simulation preview -->

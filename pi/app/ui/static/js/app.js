@@ -315,7 +315,7 @@ function showEffectControls(name, meta) {
   // Build params list, ensuring speed is always present
   const params = meta.params ? [...meta.params] : [];
   const hasSpeed = params.some(p => p.name === 'speed');
-  if (!hasSpeed) {
+  if (!hasSpeed && name !== 'animation_switcher') {
     params.unshift({
       name: 'speed',
       label: 'Speed',
@@ -377,7 +377,131 @@ function showEffectControls(name, meta) {
     }
   };
 
+  // Switcher-specific UI
+  const switcherWrap = document.getElementById('switcher-controls');
+  if (switcherWrap) {
+    if (name === 'animation_switcher') {
+      const saved = currentEffectParams.playlist;
+      switcherSelectedEffects = new Set(Array.isArray(saved) ? saved : []);
+      switcherWrap.classList.remove('hidden');
+      renderSwitcherControls();
+      startSwitcherStatusPolling();
+    } else {
+      switcherWrap.classList.add('hidden');
+      stopSwitcherStatusPolling();
+    }
+  }
+
   wrap.classList.remove('hidden');
+}
+
+function classifyEffectForSwitcher(name, meta) {
+  if (name === 'animation_switcher') return null;
+  if (name.startsWith('diag_')) return null;
+  if (meta.group === 'diagnostic') return null;
+  if (meta.group === 'sound' || meta.group === 'audio') return 'sr';
+  return 'other';
+}
+
+function renderSwitcherControls() {
+  const wrap = document.getElementById('switcher-controls');
+  if (!wrap || !effectsCatalog) return;
+
+  const srEntries = [];
+  const otherEntries = [];
+  for (const [name, meta] of Object.entries(effectsCatalog)) {
+    const section = classifyEffectForSwitcher(name, meta);
+    if (section === 'sr') srEntries.push([name, meta]);
+    else if (section === 'other') otherEntries.push([name, meta]);
+  }
+  const byName = (a, b) => compareByLabel(a[0], b[0]);
+  srEntries.sort(byName);
+  otherEntries.sort(byName);
+
+  const build = (container, entries) => {
+    container.innerHTML = '';
+    for (const [name, meta] of entries) {
+      const row = document.createElement('label');
+      row.className = 'switcher-check-row';
+      row.dataset.name = name;
+      const checked = switcherSelectedEffects.has(name);
+      if (checked) row.classList.add('checked');
+      row.innerHTML = `
+        <input type="checkbox" ${checked ? 'checked' : ''} data-name="${name}">
+        <span>${meta.label || name}</span>
+      `;
+      container.appendChild(row);
+    }
+  };
+
+  build(document.getElementById('switcher-sr-list'), srEntries);
+  build(document.getElementById('switcher-other-list'), otherEntries);
+
+  wrap.querySelectorAll('.switcher-check-row input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const name = cb.dataset.name;
+      if (cb.checked) switcherSelectedEffects.add(name);
+      else switcherSelectedEffects.delete(name);
+      cb.closest('.switcher-check-row').classList.toggle('checked', cb.checked);
+      scheduleSwitcherSave();
+    });
+  });
+
+  wrap.querySelectorAll('.switcher-select-all').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const section = btn.dataset.section;
+      const entries = section === 'sr' ? srEntries : otherEntries;
+      entries.forEach(([name]) => switcherSelectedEffects.add(name));
+      renderSwitcherControls();
+      scheduleSwitcherSave();
+    });
+  });
+  wrap.querySelectorAll('.switcher-clear').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const section = btn.dataset.section;
+      const entries = section === 'sr' ? srEntries : otherEntries;
+      entries.forEach(([name]) => switcherSelectedEffects.delete(name));
+      renderSwitcherControls();
+      scheduleSwitcherSave();
+    });
+  });
+}
+
+function scheduleSwitcherSave() {
+  clearTimeout(switcherSaveDebounce);
+  switcherSaveDebounce = setTimeout(() => {
+    if (activeEffectName !== 'animation_switcher') return;
+    const playlist = Array.from(switcherSelectedEffects).sort(compareByLabel);
+    const params = { ...currentEffectParams, playlist };
+    currentEffectParams = params;
+    api('POST', '/api/scenes/activate', { effect: 'animation_switcher', params });
+  }, 300);
+}
+
+async function pollSwitcherStatus() {
+  if (activeEffectName !== 'animation_switcher') return;
+  const status = await api('GET', '/api/scenes/switcher/status');
+  if (!status || !status.active) return;
+  const el = document.getElementById('switcher-status');
+  if (!el) return;
+  const current = status.current;
+  const currentLabel = (effectsCatalog && effectsCatalog[current])
+    ? effectsCatalog[current].label : current;
+  const remaining = Math.round(status.time_remaining || 0);
+  el.textContent = `Now playing: ${currentLabel || '(none)'} — switching in ${remaining}s`;
+}
+
+function startSwitcherStatusPolling() {
+  stopSwitcherStatusPolling();
+  pollSwitcherStatus();
+  switcherStatusInterval = setInterval(pollSwitcherStatus, 2000);
+}
+
+function stopSwitcherStatusPolling() {
+  if (switcherStatusInterval) {
+    clearInterval(switcherStatusInterval);
+    switcherStatusInterval = null;
+  }
 }
 
 async function activateEffect(name) {
@@ -484,6 +608,23 @@ function initUpload() {
 
     progress.classList.add('hidden');
   });
+}
+
+// --- Switcher state ---
+
+let switcherStatusInterval = null;
+let switcherSelectedEffects = new Set();
+let switcherSaveDebounce = null;
+
+// Deterministic collator for switcher playlist ordering
+const SWITCHER_COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base' });
+
+function compareByLabel(aName, bName) {
+  const la = (effectsCatalog && effectsCatalog[aName] ? effectsCatalog[aName].label : aName) || aName;
+  const lb = (effectsCatalog && effectsCatalog[bName] ? effectsCatalog[bName].label : bName) || bName;
+  const cmp = SWITCHER_COLLATOR.compare(la, lb);
+  if (cmp !== 0) return cmp;
+  return aName.localeCompare(bName);
 }
 
 // --- Audio ---
