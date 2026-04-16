@@ -880,6 +880,16 @@ input:focus-visible {
   margin-top: 12px;
 }
 
+#mapping-diagram {
+  width: 100%;
+  height: auto;
+  min-height: 200px;
+  background: var(--surface2);
+  border-radius: 8px;
+  display: block;
+  margin-top: 8px;
+}
+
 .status-msg {
   font-size: 13px;
   color: var(--success);

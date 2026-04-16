@@ -734,7 +734,10 @@ async function loadStripConfig() {
   renderStripTable(data.strips);
 }
 
+let _lastStrips = [];
+
 function renderStripTable(strips) {
+  _lastStrips = strips;
   const tbody = document.getElementById('strip-rows');
   tbody.innerHTML = '';
 
@@ -799,6 +802,8 @@ function renderStripTable(strips) {
       }
     });
   });
+
+  renderMappingDiagram(strips);
 }
 
 async function updateStrip(el) {
@@ -812,8 +817,129 @@ async function updateStrip(el) {
   const result = await api('POST', `/api/setup/strips/${stripId}`, body);
   if (result && result.status === 'ok') {
     showStripStatus(`Strip ${stripId} updated`);
+    // Update local cache and redraw diagram
+    if (result.strips) {
+      _lastStrips = result.strips;
+      renderMappingDiagram(result.strips);
+    }
   } else {
     showStripStatus('Error updating strip', true);
+  }
+}
+
+// Strip-to-channel mapping colors (one per strip, cycling)
+const STRIP_COLORS = [
+  '#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6',
+  '#1abc9c','#e67e22','#e84393','#00b894','#fd79a8',
+  '#6c5ce7','#00cec9','#fdcb6e','#d63031','#74b9ff','#a29bfe',
+];
+
+function renderMappingDiagram(strips) {
+  const canvas = document.getElementById('mapping-diagram');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+
+  // Determine which channels are used and max LED extent
+  const channelSet = new Set(strips.map(s => s.channel));
+  const channels = [...channelSet].sort((a, b) => a - b);
+  if (channels.length === 0) {
+    canvas.width = rect.width * dpr;
+    canvas.height = 100 * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = '#666';
+    ctx.font = '14px system-ui, sans-serif';
+    ctx.fillText('No strips configured', 20, 50);
+    return;
+  }
+
+  let maxLed = 0;
+  for (const s of strips) {
+    maxLed = Math.max(maxLed, s.offset + s.led_count);
+  }
+  maxLed = Math.max(maxLed, 344); // minimum scale
+
+  const rowH = 40;
+  const labelW = 50;
+  const padTop = 30;
+  const padBottom = 30;
+  const padRight = 20;
+  const h = padTop + channels.length * (rowH + 8) + padBottom;
+
+  canvas.width = rect.width * dpr;
+  canvas.height = h * dpr;
+  canvas.style.height = h + 'px';
+  ctx.scale(dpr, dpr);
+
+  const w = rect.width;
+  const barW = w - labelW - padRight;
+
+  // Clear
+  ctx.clearRect(0, 0, w, h);
+
+  // Header labels
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = '#888';
+  // LED number scale
+  const ticks = [0, Math.round(maxLed / 4), Math.round(maxLed / 2), Math.round(maxLed * 3 / 4), maxLed];
+  for (const tick of ticks) {
+    const x = labelW + (tick / maxLed) * barW;
+    ctx.fillText(tick, x - 6, padTop - 6);
+    ctx.strokeStyle = '#333';
+    ctx.beginPath();
+    ctx.moveTo(x, padTop - 2);
+    ctx.lineTo(x, h - padBottom);
+    ctx.stroke();
+  }
+
+  // Draw each channel row
+  for (let ci = 0; ci < channels.length; ci++) {
+    const ch = channels[ci];
+    const y = padTop + ci * (rowH + 8);
+
+    // Channel label
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.fillStyle = '#aaa';
+    ctx.fillText(`CH ${ch}`, 4, y + rowH / 2 + 4);
+
+    // Channel background bar
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(labelW, y, barW, rowH);
+    ctx.strokeStyle = '#333';
+    ctx.strokeRect(labelW, y, barW, rowH);
+
+    // Draw strips on this channel
+    const chStrips = strips.filter(s => s.channel === ch);
+    for (const s of chStrips) {
+      const x1 = labelW + (s.offset / maxLed) * barW;
+      const sw = (s.led_count / maxLed) * barW;
+      const color = STRIP_COLORS[s.id % STRIP_COLORS.length];
+
+      // Strip block
+      ctx.fillStyle = color + 'cc';
+      ctx.fillRect(x1 + 1, y + 2, Math.max(sw - 2, 4), rowH - 4);
+
+      // Direction arrow
+      ctx.fillStyle = '#fff';
+      ctx.font = '14px system-ui, sans-serif';
+      const arrow = s.direction === 'bottom_to_top' ? '\u2191' : '\u2193';
+      const arrowX = x1 + sw / 2 - 5;
+      ctx.fillText(arrow, arrowX, y + 15);
+
+      // Strip label: "S0" and LED range
+      ctx.font = 'bold 11px system-ui, sans-serif';
+      ctx.fillStyle = '#fff';
+      const label = `S${s.id}`;
+      ctx.fillText(label, x1 + 4, y + rowH - 7);
+
+      // LED range (if wide enough)
+      if (sw > 50) {
+        ctx.font = '9px system-ui, sans-serif';
+        ctx.fillStyle = '#ddd';
+        ctx.fillText(`${s.offset}-${s.offset + s.led_count - 1}`, x1 + 4, y + rowH - 18);
+      }
+    }
   }
 }
 
