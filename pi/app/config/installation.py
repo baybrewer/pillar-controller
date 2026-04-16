@@ -1,8 +1,8 @@
 """
-Installation config — mutable strip configuration SSOT.
+Installation config — channel-oriented LED configuration.
 
-Manages installation.yaml: the per-strip setup truth that is writable
-from the setup UI. hardware.yaml stays the immutable controller envelope.
+Manages installation.yaml: per-channel color order and LED count.
+hardware.yaml stays the immutable controller envelope.
 """
 
 import logging
@@ -10,152 +10,128 @@ import os
 import tempfile
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
 from ..hardware_constants import (
-  STRIPS, LEDS_PER_STRIP, CHANNELS, CONTROLLER_WIRE_ORDER,
+  CHANNELS, LEDS_PER_CHANNEL, CONTROLLER_WIRE_ORDER,
+  ACTIVE_OUTPUTS, TOTAL_OUTPUTS,
 )
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+MAX_LEDS_PER_CHANNEL = 1100
 
 VALID_COLOR_ORDERS = frozenset(["RGB", "RBG", "GRB", "GBR", "BRG", "BGR"])
-VALID_CHIPSETS = frozenset(["WS2812B", "WS2812", "WS2811", "SK6812", "WS2813", "WS2815"])
-VALID_DIRECTIONS = frozenset(["bottom_to_top", "top_to_bottom"])
-VALID_GEOMETRY_MODES = frozenset(["canonical_grid", "front_projection"])
 
 
 @dataclass
-class StripConfig:
-  id: int
-  label: str
-  enabled: bool
-  logical_order: int
-  output_channel: int
-  output_slot: int
-  direction: str
-  installed_led_count: int
-  color_order: str
-  chipset: str
+class ChannelConfig:
+  channel: int
+  color_order: str = "BGR"
+  led_count: int = 0
 
-  def validate(self, max_physical: int = LEDS_PER_STRIP, max_channels: int = CHANNELS):
+  def validate(self) -> list[str]:
     errors = []
-    if not 0 <= self.installed_led_count <= max_physical:
-      errors.append(f"Strip {self.id}: installed_led_count {self.installed_led_count} out of range [0, {max_physical}]")
+    if not 0 <= self.channel < 8:
+      errors.append(f"Channel {self.channel}: channel number out of range [0, 7]")
     if self.color_order not in VALID_COLOR_ORDERS:
-      errors.append(f"Strip {self.id}: invalid color_order '{self.color_order}'")
-    if self.chipset not in VALID_CHIPSETS:
-      errors.append(f"Strip {self.id}: invalid chipset '{self.chipset}'")
-    if self.direction not in VALID_DIRECTIONS:
-      errors.append(f"Strip {self.id}: invalid direction '{self.direction}'")
-    if not 0 <= self.output_channel < max_channels:
-      errors.append(f"Strip {self.id}: output_channel {self.output_channel} out of range [0, {max_channels})")
-    if self.output_slot not in (0, 1):
-      errors.append(f"Strip {self.id}: output_slot must be 0 or 1, got {self.output_slot}")
+      errors.append(f"Channel {self.channel}: invalid color_order '{self.color_order}'")
+    if not 0 <= self.led_count <= MAX_LEDS_PER_CHANNEL:
+      errors.append(f"Channel {self.channel}: led_count {self.led_count} out of range [0, {MAX_LEDS_PER_CHANNEL}]")
     return errors
 
 
 @dataclass
-class InstallationConfig:
+class ChannelInstallation:
   schema_version: int = SCHEMA_VERSION
-  profile_name: str = "default"
-  geometry_mode: str = "canonical_grid"
-  spatial_profile_id: str = "default"
-  strips: list[StripConfig] = field(default_factory=list)
+  channels: list[ChannelConfig] = field(default_factory=list)
 
   def validate(self) -> list[str]:
     errors = []
-    if self.geometry_mode not in VALID_GEOMETRY_MODES:
-      errors.append(f"Invalid geometry_mode: '{self.geometry_mode}'")
-    # Check logical_order uniqueness among enabled strips
-    enabled_orders = [s.logical_order for s in self.strips if s.enabled]
-    if len(enabled_orders) != len(set(enabled_orders)):
-      errors.append("Duplicate logical_order among enabled strips")
-    # Check channel/slot collisions
-    slots = [(s.output_channel, s.output_slot) for s in self.strips if s.enabled]
-    if len(slots) != len(set(slots)):
-      errors.append("Duplicate (output_channel, output_slot) among enabled strips")
-    for strip in self.strips:
-      errors.extend(strip.validate())
+    for ch in self.channels:
+      errors.extend(ch.validate())
     return errors
 
   def to_dict(self) -> dict:
     return {
       'schema_version': self.schema_version,
-      'profile_name': self.profile_name,
-      'geometry_mode': self.geometry_mode,
-      'spatial_profile_id': self.spatial_profile_id,
-      'strips': [asdict(s) for s in self.strips],
+      'channels': [asdict(ch) for ch in self.channels],
     }
 
+  def channels_api_dict(self) -> list[dict]:
+    return [asdict(ch) for ch in self.channels]
 
-def synthesize_default_installation() -> InstallationConfig:
-  """Create a default installation matching the current legacy hardware layout.
 
-  This produces the exact same output as the hardcoded cylinder.py mapper:
-  10 strips, paired per channel, even=bottom_to_top, odd=top_to_bottom, all BGR.
-  """
-  strips = []
-  for i in range(STRIPS):
-    strips.append(StripConfig(
-      id=i,
-      label=f"S{i}",
-      enabled=True,
-      logical_order=i,
-      output_channel=i // 2,
-      output_slot=i % 2,
-      direction="bottom_to_top" if i % 2 == 0 else "top_to_bottom",
-      installed_led_count=LEDS_PER_STRIP,
+def synthesize_default_channels() -> ChannelInstallation:
+  channels = []
+  for i in range(8):
+    led_count = LEDS_PER_CHANNEL if i < ACTIVE_OUTPUTS else 0
+    channels.append(ChannelConfig(
+      channel=i,
       color_order=CONTROLLER_WIRE_ORDER,
-      chipset="WS2812B",
+      led_count=led_count,
     ))
-  return InstallationConfig(strips=strips)
+  return ChannelInstallation(channels=channels)
 
 
-def load_installation(config_dir: Path) -> InstallationConfig:
-  """Load installation.yaml, synthesizing defaults if it doesn't exist."""
+def migrate_strip_to_channel(data: dict) -> ChannelInstallation:
+  channels = {i: ChannelConfig(channel=i) for i in range(8)}
+
+  for s in data.get('strips', []):
+    ch_num = s.get('output_channel', 0)
+    if 0 <= ch_num < 8:
+      ch = channels[ch_num]
+      if s.get('enabled', True):
+        ch.led_count += s.get('installed_led_count', 0)
+        if ch.color_order == 'BGR' or ch.led_count == s.get('installed_led_count', 0):
+          ch.color_order = s.get('color_order', CONTROLLER_WIRE_ORDER)
+
+  return ChannelInstallation(
+    schema_version=SCHEMA_VERSION,
+    channels=[channels[i] for i in range(8)],
+  )
+
+
+def load_installation(config_dir: Path) -> ChannelInstallation:
   path = config_dir / "installation.yaml"
   if path.exists():
     with open(path) as f:
       data = yaml.safe_load(f) or {}
-    return _parse_installation(data)
-  # First boot: synthesize and save
-  config = synthesize_default_installation()
-  save_installation(config, config_dir)
-  logger.info("Synthesized default installation.yaml from hardware layout")
-  return config
+
+    if data.get('schema_version', 0) >= 2:
+      return _parse_channels(data)
+
+    if 'strips' in data:
+      logger.info("Migrating strip-oriented installation.yaml to channel format")
+      inst = migrate_strip_to_channel(data)
+      save_installation(inst, config_dir)
+      return inst
+
+  inst = synthesize_default_channels()
+  save_installation(inst, config_dir)
+  logger.info("Synthesized default channel installation.yaml")
+  return inst
 
 
-def _parse_installation(data: dict) -> InstallationConfig:
-  """Parse installation.yaml data into InstallationConfig."""
-  strips = []
-  for s in data.get('strips', []):
-    strips.append(StripConfig(
-      id=s['id'],
-      label=s.get('label', f"S{s['id']}"),
-      enabled=s.get('enabled', True),
-      logical_order=s.get('logical_order', s['id']),
-      output_channel=s.get('output_channel', s['id'] // 2),
-      output_slot=s.get('output_slot', s['id'] % 2),
-      direction=s.get('direction', 'bottom_to_top'),
-      installed_led_count=s.get('installed_led_count', LEDS_PER_STRIP),
-      color_order=s.get('color_order', CONTROLLER_WIRE_ORDER),
-      chipset=s.get('chipset', 'WS2812B'),
+def _parse_channels(data: dict) -> ChannelInstallation:
+  channels = []
+  for ch in data.get('channels', []):
+    channels.append(ChannelConfig(
+      channel=ch.get('channel', len(channels)),
+      color_order=ch.get('color_order', CONTROLLER_WIRE_ORDER),
+      led_count=ch.get('led_count', 0),
     ))
-  return InstallationConfig(
+  while len(channels) < 8:
+    channels.append(ChannelConfig(channel=len(channels)))
+  return ChannelInstallation(
     schema_version=data.get('schema_version', SCHEMA_VERSION),
-    profile_name=data.get('profile_name', 'default'),
-    geometry_mode=data.get('geometry_mode', 'canonical_grid'),
-    spatial_profile_id=data.get('spatial_profile_id', 'default'),
-    strips=strips,
+    channels=channels,
   )
 
 
-def save_installation(config: InstallationConfig, config_dir: Path):
-  """Atomically save installation.yaml."""
+def save_installation(config: ChannelInstallation, config_dir: Path):
   path = config_dir / "installation.yaml"
   config_dir.mkdir(parents=True, exist_ok=True)
   data = config.to_dict()
@@ -164,7 +140,7 @@ def save_installation(config: InstallationConfig, config_dir: Path):
     with os.fdopen(fd, 'w') as f:
       yaml.dump(data, f, default_flow_style=False, sort_keys=False)
     os.replace(tmp_path, str(path))
-    logger.info(f"Saved installation.yaml (profile: {config.profile_name})")
+    logger.info("Saved installation.yaml")
   except Exception:
     try:
       os.unlink(tmp_path)
