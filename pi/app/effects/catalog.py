@@ -128,6 +128,13 @@ class EffectCatalogService:
     'cylinder_rotate': (
       {'name': 'speed', 'label': 'Speed', 'min': 0, 'max': 0.5, 'step': 0.01, 'default': 0.1, 'type': 'slider'},
     ),
+    'spectral_glow': (
+      {'name': 'gain', 'label': 'Gain', 'min': 0.2, 'max': 5.0, 'step': 0.1, 'default': 1.0, 'type': 'slider'},
+    ),
+    'energy_ring': (
+      {'name': 'gain', 'label': 'Gain', 'min': 0.2, 'max': 5.0, 'step': 0.1, 'default': 1.0, 'type': 'slider'},
+      {'name': 'speed', 'label': 'Speed', 'min': 0.1, 'max': 5.0, 'step': 0.1, 'default': 2.0, 'type': 'slider'},
+    ),
   }
 
   def _build_catalog(self):
@@ -145,11 +152,13 @@ class EffectCatalogService:
         palette_support=has_palette,
       )
     for name, cls in AUDIO_EFFECTS.items():
+      params = self._EFFECT_PARAMS.get(name, ())
       self._catalog[name] = EffectMeta(
         name=name,
         label=_name_to_label(name),
         group='audio',
         description=_get_description(name, cls),
+        params=params,
         audio_requires=('level', 'bass', 'mid', 'high', 'beat'),
       )
     for name, cls in DIAGNOSTIC_EFFECTS.items():

@@ -111,10 +111,12 @@ class EnergyRing(Effect):
 
 
 class SpectralGlow(Effect):
-  """Columns glow based on spectral energy."""
+  """Columns glow based on spectral energy. Bars grow upward from the bottom,
+  brightest at the top of each bar (like a flame tip)."""
 
   def render(self, t: float, state) -> np.ndarray:
     elapsed = self.elapsed(t)
+    gain = self.params.get('gain', 1.0)
     frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
 
     bands = [state.audio_bass, state.audio_mid, state.audio_high]
@@ -125,25 +127,23 @@ class SpectralGlow(Effect):
     frac = col_pos - band_idx
     band_arr = np.array(bands, dtype=np.float64)
     levels = band_arr[band_idx] * (1 - frac) + band_arr[band_idx + 1] * frac
-    fill_heights = (levels * self.height).astype(np.int32)  # (width,)
+    fill_heights = np.clip((levels * gain * self.height).astype(np.int32), 0, self.height)
 
     # Per-column hue
     hue_base = (np.arange(self.width, dtype=np.float64) / self.width + elapsed * 0.05) % 1.0
 
-    # Build a mask of which pixels are lit: pixel (x, y) is lit if y < fill_heights[x]
-    y_grid = np.arange(self.height, dtype=np.int32)[np.newaxis, :]  # (1, height)
-    fill_grid = fill_heights[:, np.newaxis]  # (width, 1)
-    lit_mask = y_grid < fill_grid  # (width, height)
+    # Lit mask: y < fill_height (y=0 is bottom in logical coords, so bars grow up)
+    y_grid = np.arange(self.height, dtype=np.int32)[np.newaxis, :]
+    fill_grid = fill_heights[:, np.newaxis]
+    lit_mask = y_grid < fill_grid
 
-    # Compute brightness fade: 1.0 - y/height * 0.5
+    # Inverted fade: brightest at the TOP of each column (y=height-1 → 1.0),
+    # dimmer near the base (y=0 → 0.5). Fixes perceived upside-down look.
     y_frac = np.arange(self.height, dtype=np.float64) / self.height
-    fade = 1.0 - y_frac * 0.5  # (height,)
+    fade = 0.5 + y_frac * 0.5
 
-    # Vectorized HSV->RGB for the full grid
     hue_grid = np.broadcast_to(hue_base[:, np.newaxis], (self.width, self.height))
-    rgb = _hsv_array_to_rgb(hue_grid, 0.8, 1.0)  # (width, height, 3)
-
-    # Apply fade as brightness
+    rgb = _hsv_array_to_rgb(hue_grid, 0.8, 1.0)
     rgb_faded = (rgb.astype(np.float32) * fade[np.newaxis, :, np.newaxis]).astype(np.uint8)
 
     frame[lit_mask] = rgb_faded[lit_mask]
