@@ -23,8 +23,8 @@ class ControllerProfile:
   controller_wire_order: str = "BGR"
   active_outputs: int = 5
   total_outputs: int = 8
-  electrical_leds_per_output: int = 344
-  physical_leds_per_strip: int = 172
+  electrical_leds_per_output: int = ELECTRICAL_LEDS_PER_OUTPUT
+  physical_leds_per_strip: int = PHYSICAL_LEDS_PER_STRIP
 
 
 @dataclass(frozen=True)
@@ -227,11 +227,13 @@ def compile_strip_plan(installation, controller: ControllerProfile) -> CompiledO
     ))
 
   logical_width = len(compiled_strips)
+  # Logical height = max installed LED count across strips (from setup screen)
+  max_leds = max((s.installed_led_count for s in compiled_strips), default=controller.physical_leds_per_strip)
   return CompiledOutputPlan(
     controller=controller,
     strips=tuple(compiled_strips),
     logical_width=logical_width,
-    logical_height=controller.physical_leds_per_strip,
+    logical_height=max_leds,
     channels=controller.active_outputs,
     leds_per_channel=controller.electrical_leds_per_output,
   )

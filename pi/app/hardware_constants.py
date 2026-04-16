@@ -61,10 +61,10 @@ CONTROLLER_WIRE_ORDER = _controller.get('controller_wire_order', 'BGR')
 COLOR_ORDER = CONTROLLER_WIRE_ORDER
 ACTIVE_OUTPUTS = _controller.get('active_outputs', 5)
 TOTAL_OUTPUTS = _controller.get('total_outputs', 8)
-ELECTRICAL_LEDS_PER_OUTPUT = _controller.get('electrical_leds_per_output', 344)
-PHYSICAL_LEDS_PER_STRIP = _controller.get('physical_leds_per_strip', 172)
+ELECTRICAL_LEDS_PER_OUTPUT = _controller.get('electrical_leds_per_output', 1200)
+PHYSICAL_LEDS_PER_STRIP = _controller.get('physical_leds_per_strip', 600)
 
 # Render dimensions
 OUTPUT_WIDTH = STRIPS          # 10 columns
-HEIGHT = LEDS_PER_STRIP        # 172 rows
+HEIGHT = LEDS_PER_STRIP        # rows (from hardware.yaml)
 INTERNAL_WIDTH = 40            # supersampled render width (config-overridable)

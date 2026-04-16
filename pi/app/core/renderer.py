@@ -13,7 +13,7 @@ import numpy as np
 
 from ..mapping.cylinder import map_frame_fast, serialize_channels, downsample_width, N
 from ..mapping.runtime_mapper import map_frame_compiled, serialize_channels_compiled
-from ..hardware_constants import CHANNELS, LEDS_PER_CHANNEL
+from ..hardware_constants import CHANNELS, LEDS_PER_CHANNEL, STRIPS, LEDS_PER_STRIP
 from ..transport.usb import TeensyTransport
 from .brightness import BrightnessEngine
 
