@@ -99,8 +99,8 @@ All under `/api/setup/auto-map/`. All endpoints require Bearer auth (camera feed
 |----------|--------|------|---------|
 | `/start` | POST | Yes | Begin scan. Body: `{"channels": [0,1,2,3,4]}` — which OctoWS2811 outputs to scan (default: all active). Returns `{"session_id": "...", "srt_url": "srt://<ip>:9000"}`. Only one scan session may run at a time; starting a new one aborts any active session. |
 | `/stop` | POST | Yes | Abort current scan session. Restores previous scene. |
-| `/status` | GET | Yes | Current phase (1-4), progress %, discovered strips, stream connected (bool) |
-| `/results` | GET | Yes | Returns the current scan results: list of discovered strip candidates, each with `{candidate_id, channel, offset, led_count, direction, confidence, status}` where status is `"confirmed"` (auto-matched or user-accepted), `"unresolved"` (ambiguous gap or match), or `"rejected"`. |
+| `/status` | GET | Yes | Returns `{"session_id": "...", "phase": 1-4, "progress": 0.0-1.0, "strips_found": N, "stream_connected": bool}`. Clients should check `session_id` matches their expected session to avoid acting on stale data after a session restart. |
+| `/results` | GET | Yes | Returns `{"session_id": "...", "candidates": [...]}`. Each candidate: `{candidate_id, channel, offset, led_count, direction, confidence, status, visible_count}` where status is `"confirmed"`, `"unresolved"`, or `"rejected"`. `confidence` is a candidate-level score (0.0-1.0) based on average blob brightness and detection consistency across the strip. |
 | `/resolve` | POST | Yes | Resolve ambiguous candidates. Body: `{"session_id": "...", "resolutions": [{"candidate_id": 0, "action": "accept"}, {"candidate_id": 1, "action": "reject"}, {"candidate_id": 2, "action": "merge", "merge_with": 3}]}`. Actions: `accept` (confirm as a strip), `reject` (discard), `merge` (combine two candidates that are the same strip seen from different angles). Returns updated results. |
 | `/apply` | POST | Yes | Commit confirmed results. Body: `{"session_id": "..."}`. Fails if any candidates are still `"unresolved"` — all must be resolved first. Transaction sequence: (1) validate confirmed strips, (2) compile output plan in memory, (3) stage both files to temp paths via atomic writers, (4) only if both temp writes succeed, swap installation.yaml then spatial_map.json, (5) hot-apply compiled plan. If any step fails before the swap, no files are modified. If the second swap fails after the first succeeded, log an error and return the partial state (the user can re-apply or reset). Returns the new strip list. |
 | `/ws` | WebSocket | Yes | Live camera frame (downscaled) + blob overlay + JSON progress. Auth via `?token=` query param (WebSocket can't send headers). |
@@ -119,7 +119,7 @@ The scan uses a dedicated `ScanEffect` (a standard effect class with `render()`)
 - The saved params for that scene from `state_manager.get_effect_params(scene_name)`
 - `renderer.state.blackout` (bool)
 
-The scan forces `renderer.state.blackout = False` so probe LEDs are actually visible. On scan end (complete or abort), it restores all three: `renderer.activate_scene(saved_name, saved_params, media_manager=deps.media_manager)` then `renderer.state.blackout = saved_blackout`. This handles both generative and media scenes (the `media_manager` kwarg is required for `media:` prefixed scenes per `renderer.py:178-198`). If no scene was active (`current_scene` is None), it sets blackout back to `saved_blackout`.
+The scan forces `renderer.state.blackout = False` so probe LEDs are actually visible. On scan end (complete or abort), it restores all three: `renderer.activate_scene(saved_name, saved_params, media_manager=deps.media_manager)` then `renderer.state.blackout = saved_blackout`. This handles both generative and media scenes (the `media_manager` kwarg is required for `media:` prefixed scenes per `renderer.py:178-198`). If no scene was active (`current_scene` is None), it explicitly clears the scan effect: `renderer.current_effect = None`, `renderer.state.current_scene = None`, then restores `renderer.state.blackout = saved_blackout`. This ensures the `_scan` effect is fully removed and the renderer returns to idle (black output unless blackout was off and another scene is later activated).
 
 **Concurrency guard:** Only one scan session at a time. The `/start` endpoint checks for an active session and aborts it before starting a new one. The scan task runs as a background `asyncio.Task` — cancellation via `/stop` triggers cleanup.
 
@@ -174,7 +174,7 @@ SpatialMap:
 StripGeometry:
   id: int  # matches StripMapping.id
   anchors: [[x,y]|null, ...]  # 5 canonical strip points (0%, 25%, 50%, 75%, 100% of full strip), null if unobserved
-  positions: [[x,y], ...]  # ALWAYS full strip length (led_count entries), indexed by absolute LED index
+  positions: [[x,y]|null, ...]  # ALWAYS full strip length (led_count entries), indexed by absolute LED index; null if unobserved
   fit_method: "auto_map_v1"
   visibility: "direct" | "partial"  # partial if some LEDs wrap behind cylinder
 ```
@@ -184,7 +184,7 @@ StripGeometry:
 - `anchors` — always 5 entries at canonical strip positions: LED indices at 0%, 25%, 50%, 75%, 100% of `led_count`. If the LED at that index was observed, store its `[x_uv, y_uv]`; if unobserved, store `null`. This means partially-visible strips have sparse anchors (e.g., `[null, null, [0.3, 0.5], [0.35, 0.7], [0.4, 0.9]]` when only the bottom half was visible). Anchors are updated on re-scan as positions fill in.
 - `visibility` — "direct" if all LEDs on the strip have non-null positions, "partial" if any are still null
 - `visible_strips` — the union of all strip IDs that have at least one non-null position, accumulated across all accepted scans
-- Multi-angle merge: when re-scanning, newly observed positions fill in null entries; already-observed positions are updated only if the new observation has higher confidence
+- Multi-angle merge: when re-scanning, newly observed positions fill in null entries. For positions already observed in a previous scan, the merge policy is candidate-level: if the new scan's candidate has higher `confidence` (better average blob quality) AND more `visible_count` (more LEDs seen), all of its positions replace the existing entry. Otherwise, existing positions are kept and only null slots are filled.
 
 Feeds into existing `SpatialMap` for front-projection effects.
 
