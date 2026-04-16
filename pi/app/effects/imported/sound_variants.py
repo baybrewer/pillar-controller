@@ -301,19 +301,24 @@ class SRMatrixRain(Effect):
     base_trail = int(self.params.get("trail", 25))
     pal_idx = _get_pal_idx(self.params, default=3)
 
-    # Audio modulations
-    speed = base_speed * (1.0 + audio.bass * gain * 2.0)
+    # Per-column band values: 10 bands, bass → left, treble → right
+    bands = np.asarray(audio.bands, dtype=np.float64) if audio.bands is not None else np.zeros(10)
+    if len(bands) < 10:
+      bands = np.pad(bands, (0, 10 - len(bands)))
     trail = int(min(60, base_trail * (1.0 + audio.buildup * gain)))
-    density = base_density * (3.0 if audio.beat else 1.0)
 
     cols = self.width
     rows = self.height
 
     self.buf.clear()
 
-    # Spawn new drops
+    # Spawn new drops — density AND speed per column from the band at that column
     for x in range(cols):
-      if random.random() < density * dt * 3:
+      band_val = float(bands[x]) if x < len(bands) else 0.0
+      col_density = base_density * (1.0 + band_val * gain * 2.0)
+      if audio.beat:
+        col_density *= 2.0
+      if random.random() < col_density * dt * 3:
         slot = self._find_free_slot()
         if slot < 0:
           continue
@@ -324,15 +329,17 @@ class SRMatrixRain(Effect):
           spd = random.uniform(20, 50)
         else:
           spd = random.uniform(50, 90)
+        col_speed_mult = base_speed * (1.0 + band_val * gain * 3.0)
         self._drop_x[slot] = x
         self._drop_y[slot] = -1.0
-        self._drop_speed[slot] = spd * speed
+        self._drop_speed[slot] = spd * col_speed_mult
         self._drop_bright[slot] = random.uniform(0.5, 1.0)
         self._active_mask[slot] = True
 
-    # Update positions
+    # Update positions — also modulate live speed by current band at each drop's column
     active = self._active_mask
-    self._drop_y[active] += self._drop_speed[active] * dt
+    drop_band_mult = 1.0 + bands[np.clip(self._drop_x, 0, len(bands) - 1)] * gain * 2.0
+    self._drop_y[active] += self._drop_speed[active] * drop_band_mult[active] * dt
 
     # Cull dead drops
     heads = self._drop_y.astype(np.int32)
