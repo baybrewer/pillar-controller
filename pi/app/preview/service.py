@@ -47,9 +47,12 @@ class PreviewService:
       raise ValueError(f"Unknown effect: {effect_name}")
 
     effect_cls = self._renderer.effect_registry[effect_name]
-    from ..mapping.cylinder import N
-    internal_width = self._renderer.internal_width if hasattr(self._renderer, 'internal_width') else 10
-    effect_width = getattr(effect_cls, 'NATIVE_WIDTH', None) or internal_width
+    width = self._renderer.pixel_map.width
+    height = self._renderer.pixel_map.height
+    render_scale = getattr(effect_cls, 'RENDER_SCALE', 1)
+    if render_scale > 1:
+      width *= render_scale
+      height *= render_scale
 
     # Merge params
     yaml_params = {}
@@ -64,7 +67,7 @@ class PreviewService:
     if effect_name == 'animation_switcher':
       merged['_effect_registry'] = self._renderer.effect_registry
 
-    self._effect = effect_cls(width=effect_width, height=N, params=merged)
+    self._effect = effect_cls(width=width, height=height, params=merged)
     self._effect_name = effect_name
     self._fps = max(1, min(fps, 60))
     self._running = True
@@ -81,7 +84,7 @@ class PreviewService:
   def render_frame(self, state) -> Optional[bytes]:
     """Render one preview frame and return binary payload with header.
 
-    Matches live render path: render at internal_width, downsample to 10.
+    Frame is already at grid dimensions from pixel_map.
     """
     if not self._running or self._effect is None:
       return None
@@ -96,10 +99,14 @@ class PreviewService:
     if frame.ndim != 3 or frame.shape[2] != 3:
       return None
 
-    # Downsample to physical width (10) if rendered at internal_width (40)
-    if frame.shape[0] != 10:
-      from ..mapping.cylinder import downsample_width
-      frame = downsample_width(frame, 10)
+    # Downsample if effect uses RENDER_SCALE > 1
+    if self._effect and getattr(self._effect, 'RENDER_SCALE', 1) > 1:
+      from PIL import Image
+      target_w = self._renderer.pixel_map.width
+      target_h = self._renderer.pixel_map.height
+      img = Image.fromarray(frame.transpose(1, 0, 2))
+      img = img.resize((target_h, target_w), Image.LANCZOS)
+      frame = np.array(img).transpose(1, 0, 2)
 
     width = frame.shape[0]
     height = frame.shape[1]

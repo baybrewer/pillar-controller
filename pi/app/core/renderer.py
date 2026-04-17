@@ -11,9 +11,8 @@ from typing import Optional
 
 import numpy as np
 
-from ..mapping.cylinder import map_frame_fast, serialize_channels, downsample_width, N
-from ..mapping.runtime_mapper import map_frame_compiled, serialize_channels_compiled
-from ..hardware_constants import CHANNELS, LEDS_PER_CHANNEL
+from ..mapping.packer import pack_frame
+from ..config.pixel_map import CompiledPixelMap
 from ..transport.usb import TeensyTransport
 from .brightness import BrightnessEngine
 
@@ -28,6 +27,9 @@ class RenderState:
     self.current_scene: Optional[str] = None
     self.blackout: bool = False
     self.gamma: float = 2.2
+    self.origin: str = 'bottom_left'
+    self.grid_width: int = 0
+    self.grid_height: int = 0
 
     # Audio modulation (updated by audio worker via snapshot)
     self._audio_lock_free: dict = {
@@ -104,14 +106,13 @@ def _build_gamma_lut(gamma: float) -> np.ndarray:
 
 class Renderer:
   def __init__(self, transport: TeensyTransport, state: RenderState,
-               brightness_engine: BrightnessEngine, internal_width: int = 40):
+               brightness_engine: BrightnessEngine, pixel_map: CompiledPixelMap):
     self.transport = transport
     self.state = state
     self.brightness_engine = brightness_engine
-    self.internal_width = internal_width
+    self.pixel_map = pixel_map
     self.effect_registry: dict = {}
     self.current_effect = None
-    self._output_plan = None  # CompiledOutputPlan, set via apply_output_plan()
     self._test_strip_id: Optional[int] = None
     self._test_strip_until: float = 0.0
     self._running = False
@@ -119,17 +120,25 @@ class Renderer:
     self._fps_samples: list[float] = []
     self._fps_window = 60
     self._last_frame_start: float = 0.0
-    # Last logical (10×172×3 uint8) frame — snapshot after brightness+gamma,
+    # Last logical (width×height×3 uint8) frame — snapshot after brightness+gamma,
     # read by live-preview WebSocket. Ring buffer of one frame.
-    self._last_logical_frame = np.zeros((10, 172, 3), dtype=np.uint8)
+    self._last_logical_frame = np.zeros((pixel_map.width, pixel_map.height, 3), dtype=np.uint8)
+    # Populate state with grid dimensions
+    self.state.grid_width = pixel_map.width
+    self.state.grid_height = pixel_map.height
+    self.state.origin = pixel_map.origin
 
   def register_effect(self, name: str, effect_class):
     self.effect_registry[name] = effect_class
 
-  def apply_output_plan(self, plan):
-    """Hot-swap the compiled output plan. Thread-safe: next frame picks it up."""
-    self._output_plan = plan
-    logger.info(f"Output plan applied: {plan.channels}ch x {plan.leds_per_channel}leds")
+  def apply_pixel_map(self, pixel_map: CompiledPixelMap):
+    """Hot-swap the compiled pixel map. Thread-safe: next frame picks it up."""
+    self.pixel_map = pixel_map
+    self._last_logical_frame = np.zeros((pixel_map.width, pixel_map.height, 3), dtype=np.uint8)
+    self.state.grid_width = pixel_map.width
+    self.state.grid_height = pixel_map.height
+    self.state.origin = pixel_map.origin
+    logger.info(f"Pixel map applied: {pixel_map.width}x{pixel_map.height} grid, {pixel_map.total_mapped_leds} LEDs")
 
   def set_test_strip(self, strip_id: Optional[int], duration: float = 5.0):
     """Activate a test pattern on a single strip for identification."""
@@ -165,10 +174,15 @@ class Renderer:
     # Pass effect_registry to AnimationSwitcher so it can instantiate playlist effects
     if scene_name == 'animation_switcher':
       merged['_effect_registry'] = self.effect_registry
-    effect_width = getattr(effect_cls, 'NATIVE_WIDTH', None) or self.internal_width
+    width = self.pixel_map.width
+    height = self.pixel_map.height
+    render_scale = getattr(effect_cls, 'RENDER_SCALE', 1)
+    if render_scale > 1:
+      width *= render_scale
+      height *= render_scale
     self.current_effect = effect_cls(
-      width=effect_width,
-      height=N,
+      width=width,
+      height=height,
       params=merged,
     )
     self.state.current_scene = scene_name
@@ -187,8 +201,8 @@ class Renderer:
       if media_manager and item_id in media_manager.items:
         from ..effects.media_playback import MediaPlayback
         self.current_effect = MediaPlayback(
-          width=self.internal_width,
-          height=N,
+          width=self.pixel_map.width,
+          height=self.pixel_map.height,
           params={'item_id': item_id, **(params or {})},
           media_manager=media_manager,
         )
@@ -240,23 +254,22 @@ class Renderer:
     """Render one frame and send to Teensy."""
     from datetime import datetime, timezone
 
-    plan = self._output_plan
-    # Use plan dimensions when available, fall back to hardware constants
-    ch = plan.channels if plan else CHANNELS
-    lpc = plan.leds_per_channel if plan else LEDS_PER_CHANNEL
+    w = self.pixel_map.width
+    h = self.pixel_map.height
 
-    if self.state.blackout:
-      channel_data = np.zeros((ch, lpc, 3), dtype=np.uint8)
-      self._last_logical_frame = np.zeros((10, 172, 3), dtype=np.uint8)
-    elif self.current_effect is None:
-      channel_data = np.zeros((ch, lpc, 3), dtype=np.uint8)
-      self._last_logical_frame = np.zeros((10, 172, 3), dtype=np.uint8)
+    if self.state.blackout or self.current_effect is None:
+      logical_frame = np.zeros((w, h, 3), dtype=np.uint8)
+      self._last_logical_frame = logical_frame
     else:
       t = time.monotonic()
       internal_frame = self.current_effect.render(t, self.state)
 
-      if internal_frame.shape[0] != 10:
-        logical_frame = downsample_width(internal_frame, 10)
+      # Downsample if effect uses RENDER_SCALE > 1
+      if self.current_effect and getattr(self.current_effect, 'RENDER_SCALE', 1) > 1:
+        from PIL import Image
+        img = Image.fromarray(internal_frame.transpose(1, 0, 2))
+        img = img.resize((h, w), Image.LANCZOS)
+        logical_frame = np.array(img).transpose(1, 0, 2)
       else:
         logical_frame = internal_frame
 
@@ -273,36 +286,30 @@ class Renderer:
       if self._test_strip_id is not None:
         if time.monotonic() < self._test_strip_until:
           logical_frame[:] = 0  # black out everything
-          plan = self._output_plan
-          if plan:
-            for strip in plan.strips:
-              if strip.strip_id == self._test_strip_id:
-                col = strip.logical_order
+          for strip in self.pixel_map.strips:
+            if strip.id == self._test_strip_id:
+              # Find the x-column this strip occupies from its scanlines
+              positions = []
+              for sc in strip.scanlines:
+                positions.extend(sc.positions())
+              if positions:
+                col = positions[0][0]
                 if col < logical_frame.shape[0]:
-                  h = logical_frame.shape[1]
-                  for y in range(h):
-                    t = y / max(h - 1, 1)
-                    logical_frame[col, y] = [int(255 * (1 - t)), 0, int(255 * t)]
-                break
+                  sh = logical_frame.shape[1]
+                  for y in range(sh):
+                    frac = y / max(sh - 1, 1)
+                    logical_frame[col, y] = [int(255 * (1 - frac)), 0, int(255 * frac)]
+              break
         else:
           self._test_strip_id = None
 
       # Snapshot logical frame for live preview (post-brightness/gamma/test-strip)
       self._last_logical_frame = logical_frame
 
-      # Use compiled plan mapper when available, legacy mapper as fallback
-      if plan:
-        channel_data = map_frame_compiled(logical_frame, plan)
-      else:
-        channel_data = map_frame_fast(logical_frame)
-
     self.state.frames_rendered += 1
 
-    # Send — only count as sent on success
-    if plan:
-      pixel_bytes = serialize_channels_compiled(channel_data)
-    else:
-      pixel_bytes = serialize_channels(channel_data)
+    # Pack frame to output bytes and send
+    pixel_bytes = pack_frame(logical_frame, self.pixel_map)
     success = await self.transport.send_frame(pixel_bytes)
     if success:
       self.state.frames_sent += 1

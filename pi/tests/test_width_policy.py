@@ -1,26 +1,35 @@
 # pi/tests/test_width_policy.py
-"""Tests for per-effect width policy in the renderer."""
+"""Tests for effect width/height policy using pixel_map in the renderer."""
 
 import numpy as np
+import time
 from unittest.mock import MagicMock, AsyncMock
 
 from app.effects.base import Effect
 from app.core.renderer import Renderer, RenderState
 from app.core.brightness import BrightnessEngine
+from app.config.pixel_map import CompiledPixelMap
 
 
-class WidthTenEffect(Effect):
-  """Test effect that declares native width 10."""
-  NATIVE_WIDTH = 10
+def _make_pixel_map(width=10, height=172):
+  """Create a minimal CompiledPixelMap for testing."""
+  return CompiledPixelMap(
+    width=width,
+    height=height,
+    origin='bottom-left',
+    forward_lut=np.full((width, height, 2), -1, dtype=np.int16),
+    reverse_lut=[],
+    output_config={},
+    strips=[],
+    total_mapped_leds=0,
+    teensy_outputs=8,
+    teensy_max_leds_per_output=1200,
+  )
 
-  def render(self, t, state):
-    frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
-    frame[0, 0] = (self.width, 0, 0)  # encode width in pixel for verification
-    return frame
 
-
-class WidthFortyEffect(Effect):
-  """Test effect that uses supersampling (default behavior)."""
+class ScaledEffect(Effect):
+  """Test effect with RENDER_SCALE = 4 for supersampling."""
+  RENDER_SCALE = 4
 
   def render(self, t, state):
     frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
@@ -28,32 +37,65 @@ class WidthFortyEffect(Effect):
     return frame
 
 
-class TestWidthPolicy:
-  def _make_renderer(self, internal_width=40):
+class DefaultEffect(Effect):
+  """Test effect that uses default grid dimensions."""
+
+  def render(self, t, state):
+    frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
+    frame[0, 0] = (self.width, 0, 0)
+    return frame
+
+
+class TestPixelMapWidthPolicy:
+  def _make_renderer(self, width=10, height=172):
     transport = MagicMock()
     transport.send_frame = AsyncMock(return_value=True)
     state = RenderState()
     brightness = BrightnessEngine({})
-    return Renderer(transport, state, brightness, internal_width=internal_width)
+    pixel_map = _make_pixel_map(width=width, height=height)
+    return Renderer(transport, state, brightness, pixel_map=pixel_map)
 
-  def test_native_width_10_effect_gets_width_10(self):
-    renderer = self._make_renderer(internal_width=40)
-    renderer.register_effect('test_w10', WidthTenEffect)
-    renderer._set_scene('test_w10')
-    assert renderer.current_effect.width == 10
-
-  def test_default_effect_gets_internal_width(self):
-    renderer = self._make_renderer(internal_width=40)
-    renderer.register_effect('test_default', WidthFortyEffect)
+  def test_default_effect_gets_pixel_map_width(self):
+    renderer = self._make_renderer(width=10, height=172)
+    renderer.register_effect('test_default', DefaultEffect)
     renderer._set_scene('test_default')
+    assert renderer.current_effect.width == 10
+    assert renderer.current_effect.height == 172
+
+  def test_custom_grid_dimensions(self):
+    renderer = self._make_renderer(width=20, height=100)
+    renderer.register_effect('test_default', DefaultEffect)
+    renderer._set_scene('test_default')
+    assert renderer.current_effect.width == 20
+    assert renderer.current_effect.height == 100
+
+  def test_render_scale_multiplies_dimensions(self):
+    renderer = self._make_renderer(width=10, height=172)
+    renderer.register_effect('test_scaled', ScaledEffect)
+    renderer._set_scene('test_scaled')
     assert renderer.current_effect.width == 40
+    assert renderer.current_effect.height == 688
 
-  def test_native_width_attribute_on_base_class(self):
-    """Base Effect class should have NATIVE_WIDTH = None (use renderer default)."""
-    assert Effect.NATIVE_WIDTH is None
+  def test_state_gets_grid_dimensions(self):
+    renderer = self._make_renderer(width=10, height=172)
+    assert renderer.state.grid_width == 10
+    assert renderer.state.grid_height == 172
 
-  def test_native_width_10_inherited(self):
-    assert WidthTenEffect.NATIVE_WIDTH == 10
+  def test_apply_pixel_map_updates_state(self):
+    renderer = self._make_renderer(width=10, height=172)
+    new_map = _make_pixel_map(width=20, height=100)
+    renderer.apply_pixel_map(new_map)
+    assert renderer.state.grid_width == 20
+    assert renderer.state.grid_height == 100
+    assert renderer.pixel_map is new_map
+
+  def test_last_logical_frame_matches_pixel_map(self):
+    renderer = self._make_renderer(width=10, height=172)
+    assert renderer._last_logical_frame.shape == (10, 172, 3)
+
+  def test_render_scale_on_base_class(self):
+    """Base Effect class should have RENDER_SCALE = 1 (no supersampling)."""
+    assert Effect.RENDER_SCALE == 1
 
 
 from app.effects.imported import IMPORTED_EFFECTS
@@ -65,9 +107,6 @@ class TestImportedWidthPolicy:
     for name, cls in IMPORTED_EFFECTS.items():
       nw = cls.__dict__.get('NATIVE_WIDTH', None)
       assert nw is None, f"{name}: still has NATIVE_WIDTH = {nw} (should be removed)"
-
-
-import time
 
 
 class TestBrokenWidthEffects:
