@@ -129,8 +129,11 @@ class CompiledPixelMap:
 # ---------------------------------------------------------------------------
 
 def load_pixel_map(config_dir: Path) -> PixelMapConfig:
-  """Load pixel_map.yaml from a config directory."""
+  """Load pixel_map.yaml from config directory. Falls back to empty config if missing."""
   path = config_dir / "pixel_map.yaml"
+  if not path.exists():
+    logger.warning(f"No pixel_map.yaml at {path} — using empty config")
+    return PixelMapConfig()
   with open(path) as f:
     data = yaml.safe_load(f)
   return _parse_config(data)
