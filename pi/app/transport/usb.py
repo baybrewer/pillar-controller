@@ -152,16 +152,31 @@ class TeensyTransport:
     return None
 
   async def send_frame(self, pixel_data: bytes) -> bool:
-    """Send a FRAME packet. pixel_data is the raw packed output from pack_frame()."""
+    """Send a FRAME packet. pixel_data is the raw packed output from pack_frame().
+
+    If CONFIG has been ACK'd, sends raw pixel bytes (post-CONFIG format).
+    Otherwise, sends legacy format with 3-byte header for backward compat.
+    """
     if not self.connected or not self.serial:
       return False
 
     self.frame_id += 1
     timestamp_us = int(time.monotonic() * 1_000_000) & 0xFFFFFFFFFFFFFFFF
 
+    if self._last_config_ack:
+      # Post-CONFIG: raw pixel bytes
+      payload = pixel_data
+    else:
+      # Legacy format: channels(u8) + leds_per_ch(u16) + pixel data
+      # Derive from pixel_data length: assume 5 channels, calc leds_per_ch
+      total_leds = len(pixel_data) // 3
+      channels = 5
+      leds_per_ch = total_leds // channels if channels > 0 else 0
+      payload = struct.pack('<BH', channels, leds_per_ch) + pixel_data
+
     packet = build_packet(
       PacketType.FRAME,
-      pixel_data,
+      payload,
       frame_id=self.frame_id,
       timestamp_us=timestamp_us,
     )
