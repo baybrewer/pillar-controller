@@ -21,9 +21,8 @@ from .audio.analyzer import AudioAnalyzer
 from .effects.generative import EFFECTS
 from .effects.audio_reactive import AUDIO_EFFECTS
 from .diagnostics.patterns import DIAGNOSTIC_EFFECTS
-from .config.installation import load_installation
+from .config.pixel_map import load_pixel_map, compile_pixel_map, validate_pixel_map
 from .config.spatial_map import load_spatial_map
-from .mapping.runtime_plan import load_controller_profile, compile_strip_plan
 from .preview.service import PreviewService
 from .effects.imported import IMPORTED_EFFECTS
 from .effects.switcher import AnimationSwitcher
@@ -78,7 +77,6 @@ def main():
   display_conf = sys_conf.get('display', {})
   transport_conf = sys_conf.get('transport', {})
   brightness_conf = sys_conf.get('brightness', {})
-  render_conf = sys_conf.get('render', {})
 
   # State manager — load persisted values
   state_manager = StateManager(config_dir=config_dir)
@@ -105,9 +103,20 @@ def main():
     handshake_timeout=transport_conf.get('handshake_timeout_ms', 3000) / 1000,
   )
 
+  # Pixel map — load, validate, compile
+  pixel_map_config = load_pixel_map(config_dir)
+  errors = validate_pixel_map(pixel_map_config)
+  if errors:
+    for err in errors:
+      logger.warning(f"Pixel map validation: {err}")
+  compiled_pixel_map = compile_pixel_map(pixel_map_config)
+  logger.info(
+    f"Pixel map: {compiled_pixel_map.width}x{compiled_pixel_map.height} grid, "
+    f"{len(pixel_map_config.strips)} strips, {compiled_pixel_map.total_mapped_leds} LEDs"
+  )
+
   # Renderer
-  internal_width = render_conf.get('internal_width', 40)
-  renderer = Renderer(transport, render_state, brightness_engine, internal_width=internal_width)
+  renderer = Renderer(transport, render_state, brightness_engine, compiled_pixel_map)
   effects_conf = config.get('effects', {})
   renderer.effects_config = effects_conf
 
@@ -172,16 +181,8 @@ def main():
     ),
   ))
 
-  # Installation config — mutable strip mapping
-  installation = load_installation(config_dir)
+  # Spatial map (optional front-projection geometry)
   spatial_map = load_spatial_map(config_dir)
-  controller_profile = load_controller_profile(config.get('hardware'))
-  compiled_plan = compile_strip_plan(installation, controller_profile)
-  logger.info(f"Installation: {len(installation.strips)} strips")
-  logger.info(f"Compiled plan: {compiled_plan.channels}ch x {compiled_plan.leds_per_channel}leds, {compiled_plan.logical_width} logical cols")
-
-  # Apply compiled plan — enables plan-driven mapper with per-strip color/direction
-  renderer.apply_output_plan(compiled_plan)
   if spatial_map:
     logger.info(f"Spatial map: {spatial_map.profile_id}, {len(spatial_map.visible_strips)} visible strips")
 
@@ -231,8 +232,8 @@ def main():
     spatial_map=spatial_map,
     preview_service=preview_service,
     effect_catalog=effect_catalog,
-    installation=installation,
-    controller_profile=controller_profile,
+    pixel_map_config=pixel_map_config,
+    compiled_pixel_map=compiled_pixel_map,
     config_dir=config_dir,
   )
 
@@ -244,6 +245,19 @@ def main():
     _background_tasks.append(asyncio.create_task(transport.reconnect_loop()))
     _background_tasks.append(asyncio.create_task(renderer.run()))
     _background_tasks.append(asyncio.create_task(state_manager.flush_loop()))
+    # Send CONFIG to Teensy once transport connects (non-blocking best-effort)
+    async def _send_initial_config():
+      for _ in range(30):
+        if transport.connected:
+          ok = await transport.send_config(compiled_pixel_map.output_config)
+          if ok:
+            logger.info("Sent CONFIG to Teensy")
+          else:
+            logger.warning("CONFIG send failed (NAK/timeout)")
+          return
+        await asyncio.sleep(1.0)
+      logger.warning("Teensy not connected after 30s — skipped CONFIG send")
+    _background_tasks.append(asyncio.create_task(_send_initial_config()))
     logger.info("Background tasks started")
 
   @app.on_event("shutdown")

@@ -37,8 +37,8 @@ def create_app(
     spatial_map=None,
     preview_service=None,
     effect_catalog=None,
-    installation=None,
-    controller_profile=None,
+    pixel_map_config=None,
+    compiled_pixel_map=None,
     config_dir=None,
 ) -> FastAPI:
 
@@ -62,8 +62,8 @@ def create_app(
         spatial_map=spatial_map,
         preview_service=preview_service,
         effect_catalog=effect_catalog,
-        installation=installation,
-        controller_profile=controller_profile,
+        pixel_map_config=pixel_map_config,
+        compiled_pixel_map=compiled_pixel_map,
         config_dir=config_dir,
     )
 
