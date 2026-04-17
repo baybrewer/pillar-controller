@@ -1048,7 +1048,39 @@ function renderSegmentTable(data) {
   tbody.innerHTML = '';
 
   const segments = data.segments || [];
-  for (let i = 0; i < segments.length; i++) {
+
+  // Sort display by Start X (ascending), then Start Y
+  const sortedIndices = segments.map((_, i) => i);
+  sortedIndices.sort((a, b) => {
+    const ax = segments[a].start[0], bx = segments[b].start[0];
+    if (ax !== bx) return ax - bx;
+    return segments[a].start[1] - segments[b].start[1];
+  });
+
+  // Compute LED ranges per output (based on segment_offsets from server if available, else calculate)
+  const ledRanges = [];
+  if (data.segments) {
+    // Use server-provided offsets if available
+    const offsets = segments.map(s => s.offset != null ? s.offset : -1);
+    if (offsets.every(o => o >= 0)) {
+      for (let i = 0; i < segments.length; i++) {
+        const leds = segments[i].led_count || (Math.abs(segments[i].end[0] - segments[i].start[0]) + Math.abs(segments[i].end[1] - segments[i].start[1]) + 1);
+        ledRanges[i] = `${offsets[i]} – ${offsets[i] + leds - 1}`;
+      }
+    } else {
+      // Calculate locally: segments on same output stack in list order
+      const pinOffset = {};
+      for (let i = 0; i < segments.length; i++) {
+        const pin = segments[i].output;
+        const off = pinOffset[pin] || 0;
+        const leds = segments[i].led_count || (Math.abs(segments[i].end[0] - segments[i].start[0]) + Math.abs(segments[i].end[1] - segments[i].start[1]) + 1);
+        ledRanges[i] = `${off} – ${off + leds - 1}`;
+        pinOffset[pin] = off + leds;
+      }
+    }
+  }
+
+  for (const i of sortedIndices) {
     const seg = segments[i];
     const ledCount = seg.led_count || (Math.abs(seg.end[0] - seg.start[0]) + Math.abs(seg.end[1] - seg.start[1]) + 1);
     const color = segmentColor(i);
@@ -1068,6 +1100,7 @@ function renderSegmentTable(data) {
       <td><input type="number" data-field="ex" value="${seg.end[0]}" min="0" max="999"></td>
       <td><input type="number" data-field="ey" value="${seg.end[1]}" min="0" max="9999"></td>
       <td class="pm-led-count">${ledCount}</td>
+      <td class="pm-led-range">${ledRanges[i] || '—'}</td>
       <td><select data-field="output">${outputOpts}</select></td>
       <td><select data-field="color_order">${colorOpts}</select></td>
       <td><button class="pm-seg-test" title="Test this segment">T</button></td>
@@ -1230,6 +1263,7 @@ function addSegmentRow(defaults) {
     <td><input type="number" data-field="ex" value="${ex}" min="0" max="999"></td>
     <td><input type="number" data-field="ey" value="${ey}" min="0" max="9999"></td>
     <td class="pm-led-count">${ledCount}</td>
+    <td class="pm-led-range">—</td>
     <td><select data-field="output">${outputOpts}</select></td>
     <td><select data-field="color_order">${colorOpts}</select></td>
     <td><button class="pm-seg-test" title="Test this segment">T</button></td>

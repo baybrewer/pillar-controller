@@ -957,6 +957,12 @@ input:focus-visible {
 
 /* --- Pixel Map Setup UI (flat segment table) --- */
 
+.pm-led-range {
+  color: #888;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 #pm-grid-container {
   margin-top: 12px;
 }
