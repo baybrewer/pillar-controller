@@ -15,7 +15,6 @@ from ..engine.buffer import LEDBuffer
 from ..engine.noise import noise01, cyl_noise, perlin_grid, noise01_grid, cyl_noise_grid, noise01_xy
 from ..engine.color import clampf
 from ..engine.palettes import pal_color, NUM_PALETTES, PALETTE_NAMES, pal_color_grid
-from ...mapping.cylinder import N
 
 
 def _get_pal_idx(params, default=0):
@@ -60,9 +59,7 @@ class Plasma(Effect):
     _Param("Scale", "scale", 0.2, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 1.0, "scale": 1.0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._t = 0.0
@@ -122,9 +119,7 @@ class AuroraBorealis(Effect):
     _Param("Bright", "bright", 0.2, 1.0, 0.05, 0.9),
   ]
   _SCALAR_PARAMS = {"speed": 0.4, "wave": 1.0, "bright": 0.9}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._t = 0.0
@@ -184,9 +179,7 @@ class LavaLamp(Effect):
     _Param("Size", "size", 0.3, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 0.3, "blobs": 5, "size": 1.0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._t = 0.0
@@ -258,9 +251,7 @@ class OceanWaves(Effect):
     _Param("Layers", "layers", 1, 5, 1, 3),
   ]
   _SCALAR_PARAMS = {"speed": 0.6, "depth": 1.0, "layers": 3, "palette": 1}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     # Default palette to Ocean (idx 1) if not overridden
     if "palette" not in self.params:
@@ -329,9 +320,7 @@ class Starfield(Effect):
     _Param("Speed", "speed", 0.2, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"density": 0.03, "twinkle": 1.0, "speed": 1.0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._last_t = None
@@ -397,7 +386,6 @@ class MatrixRain(Effect):
   DISPLAY_NAME = "Matrix Rain"
   DESCRIPTION = "Falling digital rain with speed-varied drops and fade trails"
   PALETTE_SUPPORT = True
-  NATIVE_WIDTH = 10
 
   PARAMS = [
     _Param("Speed", "speed", 0.2, 4.0, 0.1, 1.0),
@@ -409,7 +397,7 @@ class MatrixRain(Effect):
   # Fixed capacity — 10 columns * 20 max concurrent drops per column
   _MAX_DROPS = 200
 
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     if "palette" not in self.params:
       self.params["palette"] = 3

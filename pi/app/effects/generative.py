@@ -8,7 +8,6 @@ from typing import Optional
 
 from .base import Effect, hsv_to_rgb, hex_to_rgb, palette_sample, lerp_color
 from .engine.palettes import pal_color_grid, NUM_PALETTES, PALETTE_NAMES
-from ..mapping.cylinder import N
 
 
 def _get_palette_idx(params: dict, default: int = 0) -> int:

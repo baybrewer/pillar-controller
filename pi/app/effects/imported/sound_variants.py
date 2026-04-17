@@ -20,7 +20,6 @@ from ..engine.palettes import (
 )
 from ..engine.noise import cyl_noise, perlin_grid
 from ...audio.adapter import AudioCompatAdapter
-from ...mapping.cylinder import N
 
 
 def _get_pal_idx(params, default=0, names=PALETTE_NAMES, count=NUM_PALETTES):
@@ -62,9 +61,7 @@ class SRFeldstein(Effect):
     _Param("Fade/Dark", "fade", 10, 200, 5, 48),
   ]
   _SCALAR_PARAMS = {"gain": 1.0, "speed": 0.2, "fade": 48, "palette": 0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self._audio_adapter = AudioCompatAdapter()
     self.buf = LEDBuffer(width, height)
@@ -173,9 +170,7 @@ class SRLavaLamp(Effect):
     _Param("Size", "size", 0.3, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"gain": 1.0, "speed": 0.3, "blobs": 5, "size": 1.0, "palette": 0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self._audio_adapter = AudioCompatAdapter()
     self.buf = LEDBuffer(width, height)
@@ -262,7 +257,6 @@ class SRMatrixRain(Effect):
   DISPLAY_NAME = "SR Matrix Rain"
   DESCRIPTION = "Audio-reactive digital rain — bass speed, beat burst, buildup trails"
   PALETTE_SUPPORT = True
-  NATIVE_WIDTH = 10
 
   PARAMS = [
     _Param("Gain", "gain", 0.2, 5.0, 0.1, 1.0),
@@ -274,7 +268,7 @@ class SRMatrixRain(Effect):
 
   _MAX_DROPS = 200
 
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     if "palette" not in self.params:
       self.params["palette"] = 3
@@ -417,9 +411,7 @@ class SRMoire(Effect):
     _Param("Centers", "centers", 2, 5, 1, 3),
   ]
   _SCALAR_PARAMS = {"gain": 1.0, "speed": 0.4, "scale": 1.0, "centers": 3, "palette": 0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self._audio_adapter = AudioCompatAdapter()
     self.buf = LEDBuffer(width, height)
@@ -510,7 +502,6 @@ class SRFlowField(Effect):
   DISPLAY_NAME = "SR Flow Field"
   DESCRIPTION = "Audio-reactive flow field — bass velocity, beat flash, buildup glow"
   PALETTE_SUPPORT = True
-  NATIVE_WIDTH = 10
 
   PARAMS = [
     _Param("Gain", "gain", 0.2, 5.0, 0.1, 1.0),
@@ -521,7 +512,7 @@ class SRFlowField(Effect):
   ]
   _SCALAR_PARAMS = {"gain": 1.0, "speed": 0.3, "particles": 80, "fade": 0.92, "noise_scale": 1.0, "palette": 0}
 
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self._audio_adapter = AudioCompatAdapter()
     self.buf = LEDBuffer(width, height)

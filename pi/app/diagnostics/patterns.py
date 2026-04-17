@@ -7,7 +7,6 @@ Pi-side diagnostic frames for the render pipeline.
 
 import numpy as np
 from ..effects.base import Effect, hsv_to_rgb
-from ..mapping.cylinder import N
 from ..models.protocol import TestPattern
 
 
@@ -24,7 +23,7 @@ class StripIdentifyEffect(Effect):
     target = self.params.get('strip', -1)  # -1 = all
     frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
 
-    for x in range(min(self.width, 10)):
+    for x in range(self.width):
       if target >= 0 and x != target:
         continue
       frame[x, :] = self.COLORS[x % 10]
@@ -42,7 +41,7 @@ class BottomToTopSweep(Effect):
 
     pos = int((elapsed * speed * 40) % self.height)
 
-    for x in range(min(self.width, 10)):
+    for x in range(self.width):
       if target >= 0 and x != target:
         continue
       if 0 <= pos < self.height:
@@ -63,7 +62,7 @@ class ChannelIdentifyEffect(Effect):
     elapsed = self.elapsed(t)
     frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
 
-    channel = int(elapsed) % 5
+    channel = int(elapsed) % max(1, self.width // 2)
     s1 = channel * 2
     s2 = channel * 2 + 1
 
@@ -104,13 +103,13 @@ class SeamTest(Effect):
     pulse = (math.sin(elapsed * 4) + 1) / 2
     v = int(pulse * 255)
 
-    if self.width >= 10:
+    if self.width >= 2:
       frame[0, :] = (v, 0, 0)
-      frame[9, :] = (0, 0, v)
+      frame[self.width - 1, :] = (0, 0, v)
       # Mid-section marker
       mid = self.height // 2
       frame[0, mid-2:mid+2] = (255, 255, 255)
-      frame[9, mid-2:mid+2] = (255, 255, 255)
+      frame[self.width - 1, mid-2:mid+2] = (255, 255, 255)
     return frame
 
 
@@ -121,20 +120,22 @@ class SerpentineChase(Effect):
     elapsed = self.elapsed(t)
     frame = np.zeros((self.width, self.height, 3), dtype=np.uint8)
 
-    for pair in range(5):
+    chain_len = self.height * 2  # serpentine pair length
+    num_pairs = max(1, self.width // 2)
+    for pair in range(num_pairs):
       s1 = pair * 2
       s2 = pair * 2 + 1
-      # Position along the full 344-LED chain
-      chain_pos = int(elapsed * 60) % 344
+      # Position along the full serpentine chain
+      chain_pos = int(elapsed * 60) % chain_len
 
-      if chain_pos < 172:
+      if chain_pos < self.height:
         # On first strip (bottom to top)
         y = chain_pos
         if s1 < self.width:
           frame[s1, y] = (255, 255, 0)
       else:
         # On second strip (top to bottom)
-        y = 343 - chain_pos  # maps 172->171, 343->0
+        y = (chain_len - 1) - chain_pos
         if s2 < self.width:
           frame[s2, y] = (0, 255, 255)
 

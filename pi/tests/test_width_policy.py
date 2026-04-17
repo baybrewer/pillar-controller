@@ -60,11 +60,11 @@ from app.effects.imported import IMPORTED_EFFECTS
 
 
 class TestImportedWidthPolicy:
-  def test_all_imported_declare_native_width_10(self):
-    """Every imported effect must declare NATIVE_WIDTH = 10."""
+  def test_no_imported_declares_native_width(self):
+    """No imported effect should declare NATIVE_WIDTH (removed in dynamic-grid migration)."""
     for name, cls in IMPORTED_EFFECTS.items():
-      assert hasattr(cls, 'NATIVE_WIDTH'), f"{name}: missing NATIVE_WIDTH"
-      assert cls.NATIVE_WIDTH == 10, f"{name}: NATIVE_WIDTH is {cls.NATIVE_WIDTH}, expected 10"
+      nw = cls.__dict__.get('NATIVE_WIDTH', None)
+      assert nw is None, f"{name}: still has NATIVE_WIDTH = {nw} (should be removed)"
 
 
 import time

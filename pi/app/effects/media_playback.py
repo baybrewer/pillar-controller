@@ -8,7 +8,6 @@ from typing import Optional
 
 from .base import Effect
 from ..media.manager import MediaManager
-from ..mapping.cylinder import N
 
 
 class MediaPlayback(Effect):

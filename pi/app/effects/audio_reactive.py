@@ -7,7 +7,6 @@ import numpy as np
 
 from .base import Effect, hsv_to_rgb, hex_to_rgb
 from .generative import _hsv_array_to_rgb
-from ..mapping.cylinder import N
 
 
 class VUPulse(Effect):
@@ -91,22 +90,20 @@ class EnergyRing(Effect):
   the cylinder based on the 16-bin FFT spectrum resampled to 10 bands —
   loud frequencies produce a thicker ring segment at that column."""
 
-  NATIVE_WIDTH = 10  # render at physical width; col_widths array is 10 entries
-
-  def _resample_16_to_10(self, spectrum):
-    """Resample 16-bin spectrum to 10 bands via mean pooling."""
+  def _resample_bins(self, spectrum, target_width):
+    """Resample spectrum to target_width bands via mean pooling."""
     if spectrum is None:
-      return np.zeros(10, dtype=np.float32)
+      return np.zeros(target_width, dtype=np.float32)
     src = np.asarray(spectrum, dtype=np.float32)
-    if len(src) != 16:
-      return np.zeros(10, dtype=np.float32)
-    out = np.zeros(10, dtype=np.float32)
-    ratio = 16 / 10  # 1.6
-    for i in range(10):
+    if len(src) == 0:
+      return np.zeros(target_width, dtype=np.float32)
+    out = np.zeros(target_width, dtype=np.float32)
+    ratio = len(src) / target_width
+    for i in range(target_width):
       lo = i * ratio
       hi = (i + 1) * ratio
       lo_i = int(lo)
-      hi_i = min(int(hi) + 1, 16)
+      hi_i = min(int(hi) + 1, len(src))
       out[i] = float(np.mean(src[lo_i:hi_i])) if hi_i > lo_i else 0.0
     return out
 
@@ -121,8 +118,8 @@ class EnergyRing(Effect):
 
     # Per-column thickness from 10-band spectrum
     spectrum = getattr(state, 'audio_spectrum', None)
-    bands_10 = self._resample_16_to_10(spectrum)
-    col_widths = np.maximum(1, (bands_10 * 30 * gain).astype(np.int32))
+    bands = self._resample_bins(spectrum, self.width)
+    col_widths = np.maximum(1, (bands * 30 * gain).astype(np.int32))
 
     # Toroidal distance from ring_y for every row
     y_coords = np.arange(self.height, dtype=np.int32)

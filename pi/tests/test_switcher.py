@@ -8,7 +8,7 @@ from app.effects.switcher import AnimationSwitcher
 
 class FakeEffect:
   """Minimal effect stub for switcher tests."""
-  def __init__(self, width=10, height=172, params=None):
+  def __init__(self, width, height, params=None):
     self.width = width
     self.height = height
     self.params = params or {}
