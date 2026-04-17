@@ -459,6 +459,7 @@ class Fireplace(Effect):
     _Param("Ember Burst",     "ember_burst",    1,   15,   1,    6),
     _Param("Ember Spread",    "ember_spread",   0.0, 1.2,  0.05, 0.65),
     _Param("Radial",          "radial",         0,   1,   1,    0),
+    _Param("Heat Cap",        "heat_cap",       0.3, 1.0, 0.05, 0.75),
   ]
   _SCALAR_PARAMS = {
     "fuel": 1.5, "spark_zone": 60, "spark_prob": 1.0,
@@ -467,7 +468,7 @@ class Fireplace(Effect):
     "turb_x_scale": 1.8, "turb_y_bias": 2.0, "turb_y_range": 3.0,
     "buoyancy": 2.5, "noise_octaves": 2,
     "ember_rate": 0.20, "ember_burst": 6, "ember_spread": 0.65,
-    "palette": 4, "radial": 0,
+    "palette": 4, "radial": 0, "heat_cap": 0.75,
   }
   _FLARE_PROB = 0.025
   _SPARK_MIN = 0.55
@@ -675,12 +676,13 @@ class Fireplace(Effect):
         alive.append(e)
     self._embers = alive
 
-    # ── Render heat (vectorized, palette-driven) ────────────────
+    # ── Render heat (vectorized, palette-driven, heat-capped) ───
+    heat_cap = self.params.get("heat_cap", 0.75)
+    capped_heat = np.minimum(self._heat, heat_cap)
     pal_idx = _get_pal_idx(self.params, default=4)
-    pal_rgb = pal_color_grid(pal_idx, self._heat)  # (cols, rows, 3)
+    pal_rgb = pal_color_grid(pal_idx, capped_heat)  # (cols, rows, 3)
     # Sqrt brightness curve — keeps fire vibrant at mid-heat values
-    # heat=0 → black, heat=0.25 → 50% bright, heat=1 → full bright
-    brightness = np.sqrt(np.maximum(0, self._heat))[..., np.newaxis]
+    brightness = np.sqrt(np.maximum(0, capped_heat))[..., np.newaxis]
     self.buf.data = (pal_rgb.astype(np.float64) * brightness).astype(np.uint8)
 
     # ── Render embers (keep scalar — sparse particles) ───────────
@@ -690,7 +692,7 @@ class Fireplace(Effect):
       if 0 <= ecol < cols and 0 <= erow < rows:
         af = max(0.0, e.life / e.max_life)
         fl = 0.65 + 0.35 * math.sin(e.flicker_phase)
-        b = e.brightness * af * fl
+        b = e.brightness * af * fl * heat_cap
         ec = pal_color(pal_idx, min(1.0, af * 0.45 + 0.15))
         self.buf.add_led(ecol, erow,
                          int(ec[0] * b * 1.4),
