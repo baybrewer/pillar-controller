@@ -247,18 +247,21 @@ def main():
     _background_tasks.append(asyncio.create_task(state_manager.flush_loop()))
     # Send CONFIG to Teensy once transport connects (non-blocking best-effort)
     async def _send_initial_config():
-      for _ in range(30):
-        if transport.connected:
-          # Read CURRENT config from deps, not captured startup config
-          current_map = deps.compiled_pixel_map
-          ok = await transport.send_config(current_map.output_config)
-          if ok:
-            logger.info("Sent CONFIG to Teensy")
-          else:
-            logger.warning("CONFIG send failed (NAK/timeout)")
-          return
-        await asyncio.sleep(1.0)
-      logger.warning("Teensy not connected after 30s — skipped CONFIG send")
+      try:
+        for _ in range(30):
+          if transport.connected:
+            logger.info("Sending initial CONFIG to Teensy...")
+            current_map = deps.compiled_pixel_map
+            ok = await transport.send_config(current_map.output_config)
+            if ok:
+              logger.info("Sent CONFIG to Teensy — ACK received")
+            else:
+              logger.warning("CONFIG send failed (NAK/timeout)")
+            return
+          await asyncio.sleep(1.0)
+        logger.warning("Teensy not connected after 30s — skipped CONFIG send")
+      except Exception as e:
+        logger.error(f"_send_initial_config crashed: {e}", exc_info=True)
     _background_tasks.append(asyncio.create_task(_send_initial_config()))
     logger.info("Background tasks started")
 
