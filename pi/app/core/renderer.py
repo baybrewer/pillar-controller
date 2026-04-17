@@ -138,9 +138,12 @@ class Renderer:
     self.state.grid_width = pixel_map.width
     self.state.grid_height = pixel_map.height
     self.state.origin = pixel_map.origin
-    # Recreate current effect at new dimensions
+    # Recreate current effect at new dimensions (force recreation, not update_params)
     if self.state.current_scene and self.state.current_scene in self.effect_registry:
-      self._set_scene(self.state.current_scene)
+      saved_scene = self.state.current_scene
+      self.state.current_scene = None  # Clear to bypass state-preserving check
+      self.current_effect = None
+      self._set_scene(saved_scene)
     logger.info(f"Pixel map applied: {pixel_map.width}x{pixel_map.height} grid, {pixel_map.total_mapped_leds} LEDs")
 
   def set_test_strip(self, strip_id: Optional[int], duration: float = 5.0):
