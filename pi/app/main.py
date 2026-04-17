@@ -21,7 +21,7 @@ from .audio.analyzer import AudioAnalyzer
 from .effects.generative import EFFECTS
 from .effects.audio_reactive import AUDIO_EFFECTS
 from .diagnostics.patterns import DIAGNOSTIC_EFFECTS
-from .config.pixel_map import load_pixel_map, compile_pixel_map, validate_pixel_map
+from .config.pixel_map import load_pixel_map, compile_pixel_map, validate_pixel_map, PixelMapConfig
 from .config.spatial_map import load_spatial_map
 from .preview.service import PreviewService
 from .effects.imported import IMPORTED_EFFECTS
@@ -108,7 +108,9 @@ def main():
   errors = validate_pixel_map(pixel_map_config)
   if errors:
     for err in errors:
-      logger.warning(f"Pixel map validation: {err}")
+      logger.error(f"Pixel map validation: {err}")
+    logger.error("Pixel map has errors — using empty config (no LEDs)")
+    pixel_map_config = PixelMapConfig()
   compiled_pixel_map = compile_pixel_map(pixel_map_config)
   logger.info(
     f"Pixel map: {compiled_pixel_map.width}x{compiled_pixel_map.height} grid, "
@@ -242,26 +244,19 @@ def main():
 
   @app.on_event("startup")
   async def startup_tasks():
+    # Register CONFIG resend callback — fires on every connect/reconnect
+    async def _on_teensy_connect():
+      logger.info("Sending CONFIG to Teensy...")
+      ok = await transport.send_config(compiled_pixel_map.output_config)
+      if ok:
+        logger.info("CONFIG ACK received")
+      else:
+        logger.warning("CONFIG send failed (NAK/timeout)")
+    transport._on_connect_callback = _on_teensy_connect
+
     _background_tasks.append(asyncio.create_task(transport.reconnect_loop()))
     _background_tasks.append(asyncio.create_task(renderer.run()))
     _background_tasks.append(asyncio.create_task(state_manager.flush_loop()))
-    # Send CONFIG to Teensy once transport connects (non-blocking best-effort)
-    async def _send_initial_config():
-      try:
-        for _ in range(30):
-          if transport.connected:
-            logger.info("Sending initial CONFIG to Teensy...")
-            ok = await transport.send_config(compiled_pixel_map.output_config)
-            if ok:
-              logger.info("Sent CONFIG to Teensy — ACK received")
-            else:
-              logger.warning("CONFIG send failed (NAK/timeout)")
-            return
-          await asyncio.sleep(1.0)
-        logger.warning("Teensy not connected after 30s — skipped CONFIG send")
-      except Exception as e:
-        logger.error(f"_send_initial_config crashed: {e}", exc_info=True)
-    _background_tasks.append(asyncio.create_task(_send_initial_config()))
     logger.info("Background tasks started")
 
   @app.on_event("shutdown")

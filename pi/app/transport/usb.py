@@ -39,6 +39,7 @@ class TeensyTransport:
     self._rx_buffer = bytearray()
     self._lock = asyncio.Lock()
     self._last_config_ack: Optional[bool] = None
+    self._on_connect_callback = None  # async callable, set by main.py
 
     # Stats
     self.frames_sent = 0
@@ -91,6 +92,7 @@ class TeensyTransport:
     self.serial = None
     self.connected = False
     self.caps = None
+    self._last_config_ack = None  # Force CONFIG resend on next connect
 
   async def _handshake(self) -> bool:
     hello_payload = build_hello_payload("pillar-pi", "1.0.0")
@@ -305,7 +307,7 @@ class TeensyTransport:
     return None
 
   async def reconnect_loop(self):
-    """Background task: keep trying to connect."""
+    """Background task: keep trying to connect. Calls on_connect_callback after each reconnect."""
     while True:
       try:
         if not self.connected:
@@ -313,6 +315,12 @@ class TeensyTransport:
           if success:
             self.reconnect_count += 1
             logger.info(f"Reconnected (attempt #{self.reconnect_count})")
+            # Resend CONFIG after every reconnect
+            if self._on_connect_callback:
+              try:
+                await self._on_connect_callback()
+              except Exception as e:
+                logger.error(f"on_connect callback failed: {e}", exc_info=True)
         await asyncio.sleep(self.reconnect_interval)
       except asyncio.CancelledError:
         break

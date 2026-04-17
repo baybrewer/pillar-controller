@@ -135,7 +135,7 @@ def load_pixel_map(config_dir: Path) -> PixelMapConfig:
     logger.warning(f"No pixel_map.yaml at {path} — using empty config")
     return PixelMapConfig()
   with open(path) as f:
-    data = yaml.safe_load(f)
+    data = yaml.safe_load(f) or {}
   return _parse_config(data)
 
 
