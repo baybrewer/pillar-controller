@@ -17,6 +17,7 @@ import serial.tools.list_ports
 from ..models.protocol import (
   PacketType, build_packet, verify_packet, frame_packet,
   build_hello_payload, build_frame_payload, build_blackout_payload,
+  build_config_payload, output_config_to_list,
   parse_caps_payload, parse_stats_payload,
   cobs_encode, cobs_decode, PROTOCOL_VERSION,
 )
@@ -37,6 +38,7 @@ class TeensyTransport:
     self.frame_id = 0
     self._rx_buffer = bytearray()
     self._lock = asyncio.Lock()
+    self._last_config_ack: Optional[bool] = None
 
     # Stats
     self.frames_sent = 0
@@ -149,18 +151,17 @@ class TeensyTransport:
 
     return None
 
-  async def send_frame(self, channel_data: bytes, channels: int = 5,
-                       leds_per_channel: int = 344) -> bool:
+  async def send_frame(self, pixel_data: bytes) -> bool:
+    """Send a FRAME packet. pixel_data is the raw packed output from pack_frame()."""
     if not self.connected or not self.serial:
       return False
 
     self.frame_id += 1
     timestamp_us = int(time.monotonic() * 1_000_000) & 0xFFFFFFFFFFFFFFFF
 
-    payload = build_frame_payload(channels, leds_per_channel, channel_data)
     packet = build_packet(
       PacketType.FRAME,
-      payload,
+      pixel_data,
       frame_id=self.frame_id,
       timestamp_us=timestamp_us,
     )
@@ -199,6 +200,63 @@ class TeensyTransport:
       PacketType.BLACKOUT,
       build_blackout_payload(enabled),
     )
+
+  async def send_config(self, output_config: dict, timeout: float = 3.0) -> bool:
+    """Send CONFIG packet and wait for ACK/NAK.
+
+    output_config is the CompiledPixelMap.output_config dict
+    (pin -> [(strip_id, offset, count), ...]).
+    Returns True on ACK, False on NAK/timeout.
+    """
+    if not self.connected or not self.serial:
+      return False
+
+    config_list = output_config_to_list(output_config)
+    payload = build_config_payload(config_list)
+    packet = build_packet(PacketType.CONFIG, payload)
+    framed = frame_packet(packet)
+
+    try:
+      async with self._lock:
+        self.serial.write(framed)
+        self.serial.flush()
+    except (serial.SerialException, OSError) as e:
+      logger.error(f"Failed to send CONFIG: {e}")
+      self._last_config_ack = False
+      return False
+
+    response = await self._wait_for_response(
+      {PacketType.CONFIG_ACK, PacketType.CONFIG_NAK}, timeout=timeout
+    )
+    if response is None:
+      logger.warning("CONFIG: no response (timeout)")
+      self._last_config_ack = False
+      return False
+
+    header, _ = response
+    acked = header.packet_type == PacketType.CONFIG_ACK
+    self._last_config_ack = acked
+    if acked:
+      logger.info(f"CONFIG acknowledged (active pins: {config_list})")
+    else:
+      logger.warning(f"CONFIG rejected (NAK)")
+    return acked
+
+  async def _wait_for_response(
+    self,
+    expected_types: set[int],
+    timeout: float = 3.0,
+  ) -> Optional[tuple]:
+    """Read serial until a packet matching expected_types arrives or timeout."""
+    start = time.monotonic()
+    while time.monotonic() - start < timeout:
+      result = self._read_packet()
+      if result:
+        header, payload = result
+        if header.packet_type in expected_types:
+          return result
+      await asyncio.sleep(0.01)
+    return None
 
   async def send_brightness(self, brightness: float) -> bool:
     val = max(0, min(255, int(brightness * 255)))
