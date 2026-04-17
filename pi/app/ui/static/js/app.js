@@ -911,6 +911,12 @@ async function loadPixelMap() {
     originSelect.value = data.origin;
   }
 
+  // Grid dimensions (0 = auto)
+  const gwInput = document.getElementById('pm-grid-w');
+  const ghInput = document.getElementById('pm-grid-h');
+  if (gwInput) gwInput.value = data.grid_width || '';
+  if (ghInput) ghInput.value = data.grid_height || '';
+
   renderGridSVG(data);
   renderSegmentTable(data);
   renderSegmentCards(data);
@@ -1327,12 +1333,16 @@ function collectSegments() {
 
 async function applyPixelMap() {
   const origin = document.getElementById('pm-origin-select').value;
+  const gridW = parseInt(document.getElementById('pm-grid-w').value) || 0;
+  const gridH = parseInt(document.getElementById('pm-grid-h').value) || 0;
   const segments = collectSegments();
   if (segments.length === 0) {
     showPmStatus('No segments to apply', true);
     return;
   }
-  const result = await api('POST', '/api/pixel-map/apply', { origin, segments });
+  const result = await api('POST', '/api/pixel-map/apply', {
+    origin, grid_width: gridW, grid_height: gridH, segments
+  });
   if (result && !result.error) {
     showPmStatus('Saved');
     _pixelMapData = result;
@@ -1420,6 +1430,10 @@ function initSetup() {
 
   // Origin change triggers auto-apply
   document.getElementById('pm-origin-select').addEventListener('change', () => scheduleApply());
+
+  // Grid dimension changes trigger auto-apply
+  document.getElementById('pm-grid-w').addEventListener('input', () => scheduleApply());
+  document.getElementById('pm-grid-h').addEventListener('input', () => scheduleApply());
 }
 
 // --- Brightness ---

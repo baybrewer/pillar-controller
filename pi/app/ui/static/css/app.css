@@ -963,6 +963,34 @@ input:focus-visible {
   white-space: nowrap;
 }
 
+.pm-dim-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+}
+
+.pm-dim-row label {
+  color: #888;
+  font-size: 12px;
+}
+
+.pm-dim-row input {
+  width: 50px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.pm-dim-row span {
+  color: #666;
+  font-size: 12px;
+}
+
 #pm-grid-container {
   margin-top: 12px;
 }

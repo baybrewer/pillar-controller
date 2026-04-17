@@ -85,6 +85,8 @@ class PixelMapConfig:
   """Top-level pixel map configuration loaded from YAML."""
 
   origin: str = "bottom-left"
+  grid_width: int = 0   # 0 = auto-derive from segments
+  grid_height: int = 0  # 0 = auto-derive from segments
   teensy_outputs: int = 8
   teensy_max_leds_per_output: int = 1200
   teensy_wire_order: str = "BGR"
@@ -157,6 +159,8 @@ def _parse_config(data: dict) -> PixelMapConfig:
       overrides[str(ov["led_key"])] = tuple(ov["position"])
     return PixelMapConfig(
       origin=data.get("origin", "bottom-left"),
+      grid_width=data.get("grid_width", 0),
+      grid_height=data.get("grid_height", 0),
       teensy_outputs=teensy.get("outputs", 8),
       teensy_max_leds_per_output=teensy.get("max_leds_per_output", 1200),
       teensy_wire_order=teensy.get("wire_order", "BGR"),
@@ -246,6 +250,8 @@ def _serialize_config(config: PixelMapConfig) -> dict:
   result: dict = {
     "schema_version": 2,
     "origin": config.origin,
+    "grid_width": config.grid_width,
+    "grid_height": config.grid_height,
     "teensy": {
       "outputs": config.teensy_outputs,
       "max_leds_per_output": config.teensy_max_leds_per_output,
@@ -379,11 +385,14 @@ def compile_pixel_map(config: PixelMapConfig) -> CompiledPixelMap:
     all_pos.extend(positions)
 
   if not all_pos:
+    # Use declared dimensions if set, else empty
+    w = config.grid_width if config.grid_width > 0 else 0
+    h = config.grid_height if config.grid_height > 0 else 0
     return CompiledPixelMap(
-      width=0,
-      height=0,
+      width=w,
+      height=h,
       origin=config.origin,
-      forward_lut=np.zeros((0, 0, 2), dtype=np.int16),
+      forward_lut=np.zeros((max(w, 0), max(h, 0), 2), dtype=np.int16),
       reverse_lut=[],
       output_config=[0] * 8,
       segment_offsets=[],
@@ -393,10 +402,11 @@ def compile_pixel_map(config: PixelMapConfig) -> CompiledPixelMap:
       teensy_max_leds_per_output=config.teensy_max_leds_per_output,
     )
 
+  # Use declared grid dimensions if set, otherwise derive from segment positions
   max_x = max(p[0] for p in all_pos)
   max_y = max(p[1] for p in all_pos)
-  width = max_x + 1
-  height = max_y + 1
+  width = config.grid_width if config.grid_width > 0 else max_x + 1
+  height = config.grid_height if config.grid_height > 0 else max_y + 1
 
   # Build forward LUT: (width, height, 2) → [segment_index, led_index]
   forward_lut = np.full((width, height, 2), -1, dtype=np.int16)

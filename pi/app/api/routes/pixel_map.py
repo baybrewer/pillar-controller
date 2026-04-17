@@ -38,6 +38,8 @@ class SegmentRequest(BaseModel):
 
 class PixelMapApplyRequest(BaseModel):
   origin: str = 'bottom-left'
+  grid_width: int = 0   # 0 = auto-derive
+  grid_height: int = 0  # 0 = auto-derive
   segments: list[SegmentRequest]
 
 
@@ -60,6 +62,8 @@ def _build_get_response(config: PixelMapConfig, compiled) -> dict:
 
   return {
     'origin': config.origin,
+    'grid_width': config.grid_width,
+    'grid_height': config.grid_height,
     'grid': {
       'width': compiled.width if compiled else 0,
       'height': compiled.height if compiled else 0,
@@ -126,6 +130,8 @@ def create_router(deps, require_auth) -> APIRouter:
     # Build new config, preserving teensy_* settings from current config
     staged = PixelMapConfig(
       origin=req.origin,
+      grid_width=req.grid_width,
+      grid_height=req.grid_height,
       teensy_outputs=current.teensy_outputs if current else 8,
       teensy_max_leds_per_output=current.teensy_max_leds_per_output if current else 1200,
       teensy_wire_order=current.teensy_wire_order if current else "BGR",
@@ -151,6 +157,8 @@ def create_router(deps, require_auth) -> APIRouter:
   async def validate_map(req: PixelMapApplyRequest):
     staged = PixelMapConfig(
       origin=req.origin,
+      grid_width=req.grid_width,
+      grid_height=req.grid_height,
       segments=[
         SegmentConfig(
           start=tuple(seg.start),
