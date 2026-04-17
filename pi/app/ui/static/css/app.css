@@ -957,6 +957,25 @@ input:focus-visible {
 
 /* --- Pixel Map Setup UI (flat segment table) --- */
 
+.sim-toggle-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px;
+}
+
+.sim-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #888;
+  cursor: pointer;
+}
+
+.sim-toggle-label input {
+  cursor: pointer;
+}
+
 .pm-led-range {
   color: #888;
   font-size: 11px;

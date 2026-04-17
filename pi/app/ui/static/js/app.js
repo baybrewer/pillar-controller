@@ -174,6 +174,12 @@ async function stopEffectsPreview() {
 }
 
 async function startEffectsPreview(effectName, params) {
+  const simEnabled = document.getElementById('sim-enabled');
+  if (simEnabled && !simEnabled.checked) {
+    // Preview disabled — stop any running preview
+    if (previewWs) { previewWs.close(); previewWs = null; }
+    return;
+  }
   const data = await api('POST', '/api/preview/start', { effect: effectName, params: params || {}, fps: 30 });
   if (data && data.active) {
     connectPreviewWs();
@@ -1800,6 +1806,23 @@ document.addEventListener('DOMContentLoaded', () => {
   initDiagnostics();
   initSystem();
   initSim();
+  // Sim toggle — stop/start preview when checkbox changes
+  const simToggle = document.getElementById('sim-enabled');
+  if (simToggle) {
+    simToggle.addEventListener('change', () => {
+      if (!simToggle.checked) {
+        stopEffectsPreview();
+        const wrap = document.getElementById('effects-sim-canvas-wrap');
+        if (wrap) wrap.style.opacity = '0.3';
+      } else {
+        const wrap = document.getElementById('effects-sim-canvas-wrap');
+        if (wrap) wrap.style.opacity = '1';
+        if (activeEffectName) {
+          startEffectsPreview(activeEffectName, currentEffectParams);
+        }
+      }
+    });
+  }
   initTooltips();
   initHelp();
   connectWS();
