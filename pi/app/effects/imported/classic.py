@@ -19,7 +19,6 @@ from ..engine.palettes import (
   fire_color, pal_color, fire_color_grid, pal_color_grid,
   NUM_PALETTES, PALETTE_NAMES,
 )
-from ...mapping.cylinder import N
 
 
 def _get_pal_idx(params, default=0, names=PALETTE_NAMES, count=NUM_PALETTES):
@@ -96,9 +95,7 @@ class RainbowCycle(Effect):
     _Param("Speed", "speed", 0.1, 5.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 1.0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._hue = 0
@@ -148,9 +145,7 @@ class FeldsteinEquation(Effect):
     _Param("Bar Speed", "bar_speed", 0.2, 4.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 1.0, "bar_speed": 1.0, "palette": 0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._rng = random.Random()
@@ -253,9 +248,7 @@ class Feldstein2(Effect):
     _Param("Fade/Dark", "fade", 10, 200, 5, 48),
   ]
   _SCALAR_PARAMS = {"speed": 0.2, "fade": 48, "palette": 0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._rng = random.Random()
@@ -356,9 +349,7 @@ class BrettsFavorite(Effect):
     _Param("Damping", "damping", 0.8, 0.99, 0.01, 0.95),
   ]
   _SCALAR_PARAMS = {"speed": 1.0, "bands": 16, "damping": 0.95}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._hue = random.randint(0, 255)
@@ -482,9 +473,7 @@ class Fireplace(Effect):
   _SPARK_MIN = 0.55
   _SPARK_MAX = 1.0
   _MAX_EMBERS = 150
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._heat = np.zeros((width, height), dtype=np.float64)

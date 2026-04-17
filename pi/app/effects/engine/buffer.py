@@ -10,7 +10,7 @@ import numpy as np
 class LEDBuffer:
   """Manages a (cols, rows, 3) uint8 pixel buffer with cylinder wrapping."""
 
-  def __init__(self, cols=10, rows=172):
+  def __init__(self, cols: int, rows: int):
     self.cols = cols
     self.rows = rows
     self.data = np.zeros((cols, rows, 3), dtype=np.uint8)

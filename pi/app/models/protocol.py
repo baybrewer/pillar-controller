@@ -32,6 +32,8 @@ class PacketType(IntEnum):
   HELLO = 0x01
   CAPS = 0x02
   CONFIG = 0x03
+  CONFIG_ACK = 0x04
+  CONFIG_NAK = 0x05
   FRAME = 0x10
   PING = 0x20
   PONG = 0x21
@@ -224,6 +226,35 @@ def build_frame_payload(channels: int, leds_per_channel: int, pixel_data: bytes)
 def build_blackout_payload(enabled: bool) -> bytes:
   """Build explicit blackout payload: 0x01=on, 0x00=off."""
   return struct.pack('<B', 0x01 if enabled else 0x00)
+
+
+# --- CONFIG payload ---
+
+CONFIG_PAYLOAD_FORMAT = '<B8H'
+CONFIG_PAYLOAD_SIZE = struct.calcsize(CONFIG_PAYLOAD_FORMAT)  # 17 bytes
+
+
+def output_config_to_list(output_config: dict) -> list[int]:
+  """Convert output_config dict to flat [leds_per_pin x 8] list.
+
+  output_config is {pin: [(strip_id, offset, count), ...], ...}.
+  Returns a list of 8 ints where each entry is the max (offset + count)
+  for that pin — i.e. total LEDs needed on that OctoWS2811 output.
+  """
+  result = [0] * 8
+  for pin, entries in output_config.items():
+    for strip_id, offset, count in entries:
+      needed = offset + count
+      if needed > result[pin]:
+        result[pin] = needed
+  return result
+
+
+def build_config_payload(output_config: list[int]) -> bytes:
+  """Build CONFIG packet payload. output_config: 8 entries, LEDs per output pin."""
+  assert len(output_config) == 8
+  active = sum(1 for n in output_config if n > 0)
+  return struct.pack(CONFIG_PAYLOAD_FORMAT, active, *output_config)
 
 
 def parse_caps_payload(payload: bytes) -> Optional[dict]:

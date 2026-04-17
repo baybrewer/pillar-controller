@@ -11,8 +11,80 @@ from typing import Optional
 
 import numpy as np
 
-from ..mapping.runtime_plan import derive_precontroller_swizzle, simulate_display
-from ..hardware_constants import CONTROLLER_WIRE_ORDER
+# --- Color order permutation logic (relocated from legacy runtime_plan.py) ---
+
+_RGB_INDEX = {'R': 0, 'G': 1, 'B': 2}
+
+
+def _order_to_component_map(order: str) -> tuple[int, int, int]:
+  """Map byte positions to RGB component indices for a given order string.
+
+  For 'BGR': position 0 is B(=2), position 1 is G(=1), position 2 is R(=0)
+  Returns: (2, 1, 0)
+  """
+  return tuple(_RGB_INDEX[c] for c in order)
+
+
+def _invert_perm(perm: tuple[int, int, int]) -> tuple[int, int, int]:
+  """Compute the inverse of a permutation."""
+  inv = [0, 0, 0]
+  for i, v in enumerate(perm):
+    inv[v] = i
+  return tuple(inv)
+
+
+def derive_precontroller_swizzle(
+  controller_wire_order: str,
+  strip_native_order: str,
+) -> tuple[int, int, int]:
+  """Derive the permutation to apply to logical RGB pixels before sending
+  to the controller, so that the strip displays the intended color.
+
+  The OctoWS2811 controller assumes RGB input and reorders to match its
+  configured strip type (controller_wire_order). If a strip's actual
+  native order differs, we pre-compensate.
+
+  Formula: swizzle[j] = strip_component[ctrl_inverse[j]]
+  """
+  ctrl_component = _order_to_component_map(controller_wire_order)
+  ctrl_inverse = _invert_perm(ctrl_component)
+  strip_component = _order_to_component_map(strip_native_order)
+  return tuple(strip_component[ctrl_inverse[j]] for j in range(3))
+
+
+def simulate_display(
+  intended: tuple[int, int, int],
+  swizzle: tuple[int, int, int],
+  controller_wire_order: str,
+  strip_native_order: str,
+) -> tuple[int, int, int]:
+  """Simulate what color a strip actually displays.
+
+  Pipeline:
+  1. Apply precontroller swizzle to intended RGB
+  2. OctoWS2811 reorders assuming RGB input -> controller_wire_order output
+  3. Strip interprets bytes according to its native order
+  """
+  # Step 1: swizzle
+  after_swizzle = tuple(intended[swizzle[i]] for i in range(3))
+
+  # Step 2: OctoWS2811 reorders from RGB input to controller_wire_order output
+  ctrl_component = _order_to_component_map(controller_wire_order)
+  wire = [0, 0, 0]
+  for i in range(3):
+    wire[i] = after_swizzle[ctrl_component[i]]
+
+  # Step 3: strip interprets wire bytes according to its native order
+  strip_component = _order_to_component_map(strip_native_order)
+  displayed = [0, 0, 0]
+  for i in range(3):
+    displayed[strip_component[i]] = wire[i]
+
+  return tuple(displayed)
+
+
+# Default controller wire order (BGR for OctoWS2811 with BGR-native strips)
+CONTROLLER_WIRE_ORDER = "BGR"
 
 logger = logging.getLogger(__name__)
 

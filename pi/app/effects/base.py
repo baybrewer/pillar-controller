@@ -6,15 +6,13 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from ..mapping.cylinder import N
-
-
 class Effect(ABC):
   """Base class for all effects."""
 
   NATIVE_WIDTH = None  # None = use renderer's internal_width
+  RENDER_SCALE = 1     # Supersampling factor (renderer may override)
 
-  def __init__(self, width: int = 10, height: int = N, params: Optional[dict] = None):
+  def __init__(self, width: int, height: int, params: Optional[dict] = None):
     self.width = width
     self.height = height
     self.params = params or {}

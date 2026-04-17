@@ -25,7 +25,7 @@ class AppDeps:
     spatial_map: Optional[object] = None
     preview_service: Optional[object] = None
     effect_catalog: Optional[object] = None
-    # Channel-oriented installation config (Task 2+)
-    installation: Optional[object] = None
-    controller_profile: Optional[object] = None
+    # Pixel map — geometry SSOT
+    pixel_map_config: Optional[object] = None
+    compiled_pixel_map: Optional[object] = None
     config_dir: Optional[Path] = None

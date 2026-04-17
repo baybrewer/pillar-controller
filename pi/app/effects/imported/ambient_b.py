@@ -15,7 +15,6 @@ from ..engine.buffer import LEDBuffer
 from ..engine.noise import perlin as _perlin, fbm as _fbm, cyl_noise, perlin_grid, fbm_grid
 from ..engine.color import clampf
 from ..engine.palettes import pal_color, pal_color_grid
-from ...mapping.cylinder import N
 
 
 # ─── Param descriptor (mirrors led_sim_reference.py Param) ─────────
@@ -50,9 +49,7 @@ class Breathing(Effect):
     _Param("Wave", "wave", 0.0, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 0.3, "wave": 1.0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._t = 0.0
@@ -109,9 +106,7 @@ class Fireflies(Effect):
     _Param("Glow", "glow", 0.3, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"count": 20, "speed": 0.5, "glow": 1.0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._flies = []
@@ -197,9 +192,7 @@ class Nebula(Effect):
     _Param("Layers", "layers", 1, 3, 1, 2),
   ]
   _SCALAR_PARAMS = {"speed": 0.2, "scale": 1.0, "layers": 2}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._t = 0.0
@@ -264,9 +257,7 @@ class Kaleidoscope(Effect):
     _Param("Zoom", "zoom", 0.3, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 0.5, "segments": 6, "zoom": 1.0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._t = 0.0
@@ -335,9 +326,7 @@ class FlowField(Effect):
     _Param("Noise Scale", "noise_scale", 0.3, 3.0, 0.1, 1.0),
   ]
   _SCALAR_PARAMS = {"speed": 0.3, "particles": 80, "fade": 0.92, "noise_scale": 1.0}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._t = 0.0
@@ -414,9 +403,7 @@ class Moire(Effect):
     _Param("Centers", "centers", 2, 5, 1, 3),
   ]
   _SCALAR_PARAMS = {"speed": 0.4, "scale": 1.0, "centers": 3}
-  NATIVE_WIDTH = 10
-
-  def __init__(self, width=10, height=N, params=None):
+  def __init__(self, width, height, params=None):
     super().__init__(width, height, params)
     self.buf = LEDBuffer(width, height)
     self._t = 0.0

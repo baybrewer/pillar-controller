@@ -1,0 +1,140 @@
+# Pixel map — single source of truth for LED geometry.
+#
+# 10-strip serpentine pillar: 10 columns × 172 rows.
+# Even strips go up (bottom→top), odd strips go down (top→bottom).
+# Paired on 5 OctoWS2811 outputs (0+1 on output 0, 2+3 on output 1, etc.)
+
+origin: bottom-left
+
+teensy:
+  outputs: 8
+  max_leds_per_output: 1200
+  wire_order: BGR
+  signal_family: ws281x_800khz
+  octo_pins: [2, 14, 7, 8, 6, 20, 21, 5]
+
+strips:
+  # --- Output 0: strips 0 + 1 ---
+  - id: 0
+    output: 0
+    output_offset: 0
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [0, 0]
+        end: [0, 171]
+
+  - id: 1
+    output: 0
+    output_offset: 172
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [1, 171]
+        end: [1, 0]
+
+  # --- Output 1: strips 2 + 3 ---
+  - id: 2
+    output: 1
+    output_offset: 0
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [2, 0]
+        end: [2, 171]
+
+  - id: 3
+    output: 1
+    output_offset: 172
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [3, 171]
+        end: [3, 0]
+
+  # --- Output 2: strips 4 + 5 ---
+  - id: 4
+    output: 2
+    output_offset: 0
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [4, 0]
+        end: [4, 171]
+
+  - id: 5
+    output: 2
+    output_offset: 172
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [5, 171]
+        end: [5, 0]
+
+  # --- Output 3: strips 6 + 7 ---
+  - id: 6
+    output: 3
+    output_offset: 0
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [6, 0]
+        end: [6, 171]
+
+  - id: 7
+    output: 3
+    output_offset: 172
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [7, 171]
+        end: [7, 0]
+
+  # --- Output 4: strips 8 + 9 ---
+  - id: 8
+    output: 4
+    output_offset: 0
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [8, 0]
+        end: [8, 171]
+
+  - id: 9
+    output: 4
+    output_offset: 172
+    total_leds: 172
+    segments:
+      - range_start: 0
+        range_end: 171
+        color_order: BGR
+    scanlines:
+      - start: [9, 171]
+        end: [9, 0]
