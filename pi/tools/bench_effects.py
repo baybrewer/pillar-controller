@@ -13,11 +13,21 @@ import time
 import numpy as np
 from unittest.mock import MagicMock
 
+from pathlib import Path
+
 from app.effects.generative import EFFECTS
 from app.effects.audio_reactive import AUDIO_EFFECTS
 from app.effects.imported import IMPORTED_EFFECTS
-from app.mapping.cylinder import downsample_width, map_frame_fast, serialize_channels, N
+from app.config.pixel_map import load_pixel_map, compile_pixel_map
+from app.mapping.packer import pack_frame
 from app.core.renderer import _build_gamma_lut
+
+# Load and compile pixel map for benchmarking
+_config_dir = Path(__file__).parent.parent / "config"
+_pixel_map_config = load_pixel_map(_config_dir)
+_pixel_map = compile_pixel_map(_pixel_map_config)
+GRID_WIDTH = _pixel_map.width
+GRID_HEIGHT = _pixel_map.height
 
 
 def _make_state():
@@ -42,7 +52,7 @@ def bench_one(name, effect_cls, frames, gamma_lut, state):
   """Benchmark a single effect through the full pipeline."""
   native_w = getattr(effect_cls, 'NATIVE_WIDTH', None) or 40
   try:
-    eff = effect_cls(width=native_w, height=N)
+    eff = effect_cls(width=native_w, height=GRID_HEIGHT)
   except Exception as e:
     return {'name': name, 'error': str(e)}
 
@@ -69,14 +79,18 @@ def bench_one(name, effect_cls, frames, gamma_lut, state):
 
     # Post-processing pipeline
     p_start = r_end
-    if internal_frame.shape[0] != 10:
-      logical = downsample_width(internal_frame, 10)
+    if internal_frame.shape[0] != GRID_WIDTH:
+      # Downsample width to grid dimensions via simple area averaging
+      factor = internal_frame.shape[0] // GRID_WIDTH
+      if factor > 1:
+        logical = internal_frame.reshape(GRID_WIDTH, factor, GRID_HEIGHT, 3).mean(axis=1).astype(np.uint8)
+      else:
+        logical = internal_frame[:GRID_WIDTH]
     else:
       logical = internal_frame
     logical = (logical * 0.8).astype(np.uint8)  # brightness
     logical = gamma_lut[logical]
-    channel_data = map_frame_fast(logical)
-    _ = serialize_channels(channel_data)
+    _ = pack_frame(logical, _pixel_map)
     p_end = time.perf_counter()
 
     render_times.append(r_end - r_start)

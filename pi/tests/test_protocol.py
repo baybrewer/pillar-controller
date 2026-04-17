@@ -377,33 +377,6 @@ class TestProtocolContracts:
     assert result['output_fps'] == 33
 
 
-class TestHardwareConstants:
-  def test_python_constants_match_yaml(self):
-    from app.hardware_constants import STRIPS, LEDS_PER_STRIP, CHANNELS, LEDS_PER_CHANNEL
-    assert STRIPS == 10
-    assert LEDS_PER_STRIP == 172
-    assert CHANNELS == 5
-    assert LEDS_PER_CHANNEL == 344
-
-  def test_teensy_constants_match(self):
-    """Verify Teensy config.h values match hardware.yaml."""
-    config_path = Path(__file__).parent.parent.parent / 'teensy' / 'firmware' / 'include' / 'config.h'
-    if not config_path.exists():
-      pytest.skip("Teensy config.h not found")
-    content = config_path.read_text()
-
-    from app.hardware_constants import LEDS_PER_CHANNEL, CHANNELS, LEDS_PER_STRIP
-
-    # Extract values from config.h
-    lps = int(re.search(r'#define\s+LEDS_PER_STRIP\s+(\d+)', content).group(1))
-    active = int(re.search(r'#define\s+ACTIVE_OUTPUTS\s+(\d+)', content).group(1))
-    physical = int(re.search(r'#define\s+LEDS_PER_PHYSICAL\s+(\d+)', content).group(1))
-
-    assert lps == LEDS_PER_CHANNEL, f"config.h LEDS_PER_STRIP={lps} != hardware.yaml LEDS_PER_CHANNEL={LEDS_PER_CHANNEL}"
-    assert active == CHANNELS, f"config.h ACTIVE_OUTPUTS={active} != hardware.yaml CHANNELS={CHANNELS}"
-    assert physical == LEDS_PER_STRIP, f"config.h LEDS_PER_PHYSICAL={physical} != hardware.yaml LEDS_PER_STRIP={LEDS_PER_STRIP}"
-
-
 class TestCOBSLongRuns:
   """Test COBS with long non-zero runs (>254 bytes)."""
 

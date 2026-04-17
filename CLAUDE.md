@@ -9,9 +9,10 @@ LED pillar controller: Raspberry Pi + Teensy 4.1 + OctoWS2811.
 - **Canvas**: Logical 10x172 RGB -> mapped to 5x344 electrical channels
 
 ## SSOT enforcement
-- `pi/config/hardware.yaml` — physical layout (strips, channels, LEDs)
-- `pi/app/hardware_constants.py` — Python constants loaded from hardware.yaml
-- `teensy/firmware/include/config.h` — Teensy constants (validated by tests, regenerable via `pi/scripts/generate_teensy_config.py`)
+- `pi/config/pixel_map.yaml` — pixel map geometry SSOT (strips, scanlines, outputs, color order)
+- `pi/app/config/pixel_map.py` — pixel map data model, validation, compilation
+- `pi/config/hardware.yaml` — legacy physical layout reference (kept for Teensy config generation)
+- `teensy/firmware/include/config.h` — Teensy constants (regenerable via `pi/scripts/generate_teensy_config.py`)
 - `pi/app/models/protocol.py` — protocol packet types, payload schemas, constants
 - `pi/config/effects.yaml` — effect defaults and palettes (merged into renderer)
 
@@ -24,8 +25,8 @@ LED pillar controller: Raspberry Pi + Teensy 4.1 + OctoWS2811.
 - `pi/app/core/renderer.py` — render loop, scene activation, effects config merge
 - `pi/app/core/brightness.py` — brightness engine + solar automation (astral)
 - `pi/app/core/state.py` — debounced persistent state (mark_dirty/flush)
-- `pi/app/hardware_constants.py` — SSOT constants from hardware.yaml
-- `pi/app/mapping/cylinder.py` — serpentine mapping (uses hardware_constants)
+- `pi/app/config/pixel_map.py` — pixel map data model, validation, compilation into LUTs
+- `pi/app/mapping/packer.py` — output packer (reverse LUT + color order swizzle)
 - `pi/app/transport/usb.py` — USB serial transport (lock-protected I/O)
 - `teensy/firmware/src/main.cpp` — Teensy firmware
 
@@ -54,7 +55,8 @@ code defaults < yaml config files < persisted state (state.json) < live API over
 ## Config files
 - `pi/config/system.yaml.example` — template (tracked, placeholders)
 - `pi/config/system.yaml` — real config (gitignored, contains secrets)
-- `pi/config/hardware.yaml` — physical layout SSOT
+- `pi/config/pixel_map.yaml` — pixel map geometry SSOT
+- `pi/config/hardware.yaml` — legacy physical layout reference
 - `pi/config/effects.yaml` — effect defaults, merged into renderer
 
 ## Deployment
@@ -88,7 +90,7 @@ pi/scripts/deploy.sh ledfanatic.local  # updates (rsync + pip install + restart)
 
 ## Rules
 - Pi owns rendering; Teensy owns LED output
-- Never hardcode geometry — use hardware_constants.py / hardware.yaml
+- Never hardcode geometry — use pixel_map.yaml / CompiledPixelMap
 - 60 FPS default target
 - Scene activation goes through renderer.activate_scene() for all types
 - Serial I/O protected by asyncio.Lock; send_frame uses asyncio.to_thread

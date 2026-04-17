@@ -1,6 +1,6 @@
 """Tests for color order swizzle derivation — the source of truth for correctness."""
 
-from app.mapping.runtime_plan import (
+from app.setup.rgb_order import (
   derive_precontroller_swizzle,
   simulate_display,
 )
