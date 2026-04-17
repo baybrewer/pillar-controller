@@ -36,11 +36,12 @@ SWIZZLE_MAP: dict[str, tuple[int, int, int]] = {
 # ---------------------------------------------------------------------------
 
 @dataclass
-class ScanlineConfig:
-  """A run of LEDs along a single axis (horizontal or vertical)."""
+class LineConfig:
+  """A run of LEDs along a single axis with its own color order."""
 
   start: tuple[int, int]
   end: tuple[int, int]
+  color_order: str = "BGR"
 
   def _validate_axis_aligned(self) -> tuple[int, int]:
     """Return (dx, dy) or raise if diagonal."""
@@ -48,18 +49,18 @@ class ScanlineConfig:
     dy = self.end[1] - self.start[1]
     if dx != 0 and dy != 0:
       raise ValueError(
-        f"Scanline must be axis-aligned (horizontal or vertical), "
+        f"Line must be axis-aligned (horizontal or vertical), "
         f"got start={self.start} end={self.end}"
       )
     return dx, dy
 
   def led_count(self) -> int:
-    """Number of LEDs in this scanline (inclusive of both endpoints)."""
+    """Number of LEDs in this line (inclusive of both endpoints)."""
     dx, dy = self._validate_axis_aligned()
     return abs(dx) + abs(dy) + 1
 
   def positions(self) -> list[tuple[int, int]]:
-    """Ordered list of (x, y) grid positions covered by this scanline."""
+    """Ordered list of (x, y) grid positions covered by this line."""
     dx, dy = self._validate_axis_aligned()
     result = []
     count = self.led_count()
@@ -73,26 +74,24 @@ class ScanlineConfig:
     return result
 
 
-@dataclass
-class SegmentConfig:
-  """A contiguous range of LEDs within a strip sharing a color order."""
-
-  range_start: int
-  range_end: int
-  color_order: str
+# Backward-compatible alias so existing imports don't break in one shot
+ScanlineConfig = LineConfig
 
 
 @dataclass
 class StripConfig:
-  """One logical LED strip with its scanline geometry and output mapping."""
+  """One logical LED strip with its line geometry and output mapping."""
 
   id: int
   output: int
   output_offset: int
-  total_leds: int
-  segments: list[SegmentConfig]
-  scanlines: list[ScanlineConfig]
+  lines: list[LineConfig]
   pixel_overrides: dict[int, tuple[int, int]] = field(default_factory=dict)
+
+  @property
+  def total_leds(self) -> int:
+    """Derived from sum of line LED counts."""
+    return sum(line.led_count() for line in self.lines)
 
 
 @dataclass
@@ -144,20 +143,13 @@ def _parse_config(data: dict) -> PixelMapConfig:
   teensy = data.get("teensy", {})
   strips = []
   for s in data.get("strips", []):
-    segments = [
-      SegmentConfig(
-        range_start=seg["range_start"],
-        range_end=seg["range_end"],
-        color_order=seg["color_order"],
+    lines = [
+      LineConfig(
+        start=tuple(ln["start"]),
+        end=tuple(ln["end"]),
+        color_order=ln.get("color_order", "BGR"),
       )
-      for seg in s.get("segments", [])
-    ]
-    scanlines = [
-      ScanlineConfig(
-        start=tuple(sc["start"]),
-        end=tuple(sc["end"]),
-      )
-      for sc in s.get("scanlines", [])
+      for ln in s.get("lines", [])
     ]
     overrides = {}
     for ov in s.get("pixel_overrides", []):
@@ -166,9 +158,7 @@ def _parse_config(data: dict) -> PixelMapConfig:
       id=s["id"],
       output=s["output"],
       output_offset=s["output_offset"],
-      total_leds=s["total_leds"],
-      segments=segments,
-      scanlines=scanlines,
+      lines=lines,
       pixel_overrides=overrides,
     ))
   return PixelMapConfig(
@@ -209,21 +199,13 @@ def _serialize_config(config: PixelMapConfig) -> dict:
       "id": s.id,
       "output": s.output,
       "output_offset": s.output_offset,
-      "total_leds": s.total_leds,
-      "segments": [
+      "lines": [
         {
-          "range_start": seg.range_start,
-          "range_end": seg.range_end,
-          "color_order": seg.color_order,
+          "start": list(ln.start),
+          "end": list(ln.end),
+          "color_order": ln.color_order,
         }
-        for seg in s.segments
-      ],
-      "scanlines": [
-        {
-          "start": list(sc.start),
-          "end": list(sc.end),
-        }
-        for sc in s.scanlines
+        for ln in s.lines
       ],
     }
     if s.pixel_overrides:
@@ -281,34 +263,33 @@ def validate_pixel_map(config: PixelMapConfig) -> list[str]:
       )
     prefix = f"Strip {strip.id}"
 
-    # --- Scanline total must match total_leds ---
-    scanline_total = 0
-    for sc in strip.scanlines:
+    # --- Validate lines (axis-aligned, valid color_order) ---
+    line_total = 0
+    for ln in strip.lines:
       try:
-        scanline_total += sc.led_count()
+        line_total += ln.led_count()
       except ValueError as exc:
         errors.append(f"{prefix}: {exc}")
-
-    if scanline_total != strip.total_leds:
-      errors.append(
-        f"{prefix}: scanline LED count ({scanline_total}) != "
-        f"total_leds ({strip.total_leds}) — mismatch"
-      )
+      if ln.color_order not in SWIZZLE_MAP:
+        errors.append(
+          f"{prefix}: invalid color_order '{ln.color_order}' — "
+          f"must be one of {sorted(SWIZZLE_MAP.keys())}"
+        )
 
     # --- No negative coordinates ---
-    for sc in strip.scanlines:
-      for coord_name, coord in [("start", sc.start), ("end", sc.end)]:
+    for ln in strip.lines:
+      for coord_name, coord in [("start", ln.start), ("end", ln.end)]:
         if coord[0] < 0 or coord[1] < 0:
           errors.append(
-            f"{prefix}: scanline {coord_name} has negative coordinate {coord} — "
+            f"{prefix}: line {coord_name} has negative coordinate {coord} — "
             f"all coordinates must be non-negative"
           )
 
-    # --- Build effective positions (scanlines + overrides) ---
+    # --- Build effective positions (lines + overrides) ---
     effective_positions: list[tuple[int, int]] = []
-    for sc in strip.scanlines:
+    for ln in strip.lines:
       try:
-        effective_positions.extend(sc.positions())
+        effective_positions.extend(ln.positions())
       except ValueError:
         pass  # already reported above
 
@@ -331,32 +312,13 @@ def validate_pixel_map(config: PixelMapConfig) -> list[str]:
       all_positions.add(pos)
 
     # --- Output overflow ---
-    if strip.output_offset + strip.total_leds > config.teensy_max_leds_per_output:
+    total = strip.total_leds
+    if strip.output_offset + total > config.teensy_max_leds_per_output:
       errors.append(
         f"{prefix}: output overflow — offset ({strip.output_offset}) + "
-        f"total_leds ({strip.total_leds}) = {strip.output_offset + strip.total_leds} "
+        f"total_leds ({total}) = {strip.output_offset + total} "
         f"exceeds max_leds_per_output ({config.teensy_max_leds_per_output})"
       )
-
-    # --- Segment coverage ---
-    covered = set()
-    for seg in strip.segments:
-      # Segment range bounds check
-      if seg.range_end >= strip.total_leds:
-        errors.append(
-          f"{prefix}: segment range_end ({seg.range_end}) exceeds "
-          f"total_leds ({strip.total_leds}) — out of bounds"
-        )
-      for i in range(seg.range_start, seg.range_end + 1):
-        covered.add(i)
-
-    expected = set(range(strip.total_leds))
-    if covered != expected:
-      missing = expected - covered
-      if missing:
-        errors.append(
-          f"{prefix}: segment coverage gap — LED indices {sorted(missing)} not covered"
-        )
 
   # --- Overlapping output ranges on the same pin ---
   from collections import defaultdict
@@ -388,14 +350,14 @@ def compile_pixel_map(config: PixelMapConfig) -> CompiledPixelMap:
 
   Returns a CompiledPixelMap with forward LUT, reverse LUT, and output config.
   """
-  # First pass: expand all scanlines + overrides to find grid bounds
+  # First pass: expand all lines + overrides to find grid bounds
   # and build per-strip position lists.
   strip_positions: dict[int, list[tuple[int, int]]] = {}
 
   for strip in config.strips:
     positions: list[tuple[int, int]] = []
-    for sc in strip.scanlines:
-      positions.extend(sc.positions())
+    for ln in strip.lines:
+      positions.extend(ln.positions())
 
     # Apply pixel overrides
     for led_idx, pos in strip.pixel_overrides.items():
@@ -436,25 +398,23 @@ def compile_pixel_map(config: PixelMapConfig) -> CompiledPixelMap:
   max_strip_id = max(s.id for s in config.strips)
   reverse_lut: list[list] = [[] for _ in range(max_strip_id + 1)]
 
-  # Build segment color order lookup per strip
-  strip_segment_map: dict[int, list[SegmentConfig]] = {}
+  # Build per-strip LED-to-color-order mapping from lines
+  strip_led_color_order: dict[int, list[str]] = {}
   for strip in config.strips:
-    strip_segment_map[strip.id] = strip.segments
+    led_orders: list[str] = []
+    for ln in strip.lines:
+      led_orders.extend([ln.color_order] * ln.led_count())
+    strip_led_color_order[strip.id] = led_orders
 
   total_mapped = 0
 
   for strip in config.strips:
     positions = strip_positions[strip.id]
+    led_orders = strip_led_color_order[strip.id]
     strip_reverse: list[tuple[int, int, tuple[int, int, int]]] = []
 
     for led_idx, (x, y) in enumerate(positions):
-      # Find color order for this LED from segments
-      color_order = "RGB"  # default fallback
-      for seg in strip.segments:
-        if seg.range_start <= led_idx <= seg.range_end:
-          color_order = seg.color_order
-          break
-
+      color_order = led_orders[led_idx] if led_idx < len(led_orders) else "RGB"
       swizzle = SWIZZLE_MAP.get(color_order, (0, 1, 2))
 
       forward_lut[x, y] = [strip.id, led_idx]

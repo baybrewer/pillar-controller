@@ -885,19 +885,19 @@ const STRIP_COLORS = [
   '#6c5ce7','#00cec9','#fdcb6e','#d63031','#74b9ff','#a29bfe',
 ];
 
-// Generate distinct scanline colors using HSL (golden angle spacing for max distinction)
-function scanlineColor(index) {
+// Generate distinct line colors using HSL (golden angle spacing for max distinction)
+function lineColor(index) {
   const hue = (index * 137.508) % 360;  // golden angle
   return `hsl(${hue}, 75%, 55%)`;
 }
 
-// Build scanline color map: returns { key: "stripId-scanlineIdx" -> color }
-function buildScanlineColorMap(strips) {
+// Build line color map: returns { key: "stripId-lineIdx" -> color }
+function buildLineColorMap(strips) {
   const map = {};
   let globalIdx = 0;
   for (const strip of (strips || [])) {
-    for (let si = 0; si < (strip.scanlines || []).length; si++) {
-      map[`${strip.id}-${si}`] = scanlineColor(globalIdx);
+    for (let li = 0; li < (strip.lines || []).length; li++) {
+      map[`${strip.id}-${li}`] = lineColor(globalIdx);
       globalIdx++;
     }
   }
@@ -934,7 +934,7 @@ async function loadPixelMap() {
   }
 
   renderGridPreview(data);
-  renderStripList(data, buildScanlineColorMap(data.strips));
+  renderStripList(data, buildLineColorMap(data.strips));
 }
 
 function renderGridPreview(pixelMap) {
@@ -954,15 +954,15 @@ function renderGridPreview(pixelMap) {
     return;
   }
 
-  // Build a grid of scanline keys: grid[x][y] = "stripId-scanlineIdx" or null
+  // Build a grid of line keys: grid[x][y] = "stripId-lineIdx" or null
   const grid = Array.from({ length: gridW }, () => new Array(gridH).fill(null));
-  const slColorMap = buildScanlineColorMap(pixelMap.strips);
+  const lnColorMap = buildLineColorMap(pixelMap.strips);
 
   for (const strip of (pixelMap.strips || [])) {
-    for (let si = 0; si < (strip.scanlines || []).length; si++) {
-      const scanline = strip.scanlines[si];
-      const [sx, sy] = scanline.start;
-      const [ex, ey] = scanline.end;
+    for (let li = 0; li < (strip.lines || []).length; li++) {
+      const line = strip.lines[li];
+      const [sx, sy] = line.start;
+      const [ex, ey] = line.end;
       const dx = ex - sx;
       const dy = ey - sy;
       const steps = Math.abs(dx) + Math.abs(dy);
@@ -971,7 +971,7 @@ function renderGridPreview(pixelMap) {
       let cx = sx, cy = sy;
       for (let i = 0; i <= steps; i++) {
         if (cx >= 0 && cx < gridW && cy >= 0 && cy < gridH) {
-          grid[cx][cy] = `${strip.id}-${si}`;
+          grid[cx][cy] = `${strip.id}-${li}`;
         }
         cx += stepX;
         cy += stepY;
@@ -1000,13 +1000,13 @@ function renderGridPreview(pixelMap) {
 
   for (let gx = 0; gx < gridW; gx++) {
     for (let gy = 0; gy < gridH; gy++) {
-      const slKey = grid[gx][gy];
+      const lnKey = grid[gx][gy];
       const px = gx * cellSize;
       // If bottom-left origin, flip Y so y=0 draws at canvas bottom
       const py = isBottomLeft ? (gridH - 1 - gy) * cellSize : gy * cellSize;
 
-      if (slKey !== null && slColorMap[slKey]) {
-        ctx.fillStyle = slColorMap[slKey];
+      if (lnKey !== null && lnColorMap[lnKey]) {
+        ctx.fillStyle = lnColorMap[lnKey];
       } else {
         ctx.fillStyle = '#333';
       }
@@ -1015,7 +1015,7 @@ function renderGridPreview(pixelMap) {
   }
 }
 
-function renderStripList(pixelMap, slColorMap) {
+function renderStripList(pixelMap, lnColorMap) {
   const container = document.getElementById('pm-strip-list');
   if (!container) return;
   container.innerHTML = '';
@@ -1032,11 +1032,10 @@ function renderStripList(pixelMap, slColorMap) {
     card.dataset.stripId = strip.id;
 
     const color = STRIP_COLORS[strip.id % STRIP_COLORS.length];
-    const scanlineCount = (strip.scanlines || []).length;
-    const segmentCount = (strip.segments || []).length;
-    const totalScanlineLeds = (strip.scanlines || []).reduce((sum, sc) => {
-      const dx = Math.abs(sc.end[0] - sc.start[0]);
-      const dy = Math.abs(sc.end[1] - sc.start[1]);
+    const lineCount = (strip.lines || []).length;
+    const totalLineLeds = (strip.lines || []).reduce((sum, ln) => {
+      const dx = Math.abs(ln.end[0] - ln.start[0]);
+      const dy = Math.abs(ln.end[1] - ln.start[1]);
       return sum + dx + dy + 1;
     }, 0);
 
@@ -1045,7 +1044,7 @@ function renderStripList(pixelMap, slColorMap) {
         <span class="pm-strip-chevron">&#9654;</span>
         <span class="pm-strip-color-dot" style="background:${color}"></span>
         <span class="pm-strip-title">Strip ${strip.id}</span>
-        <span class="pm-strip-summary">Out ${strip.output}+${strip.output_offset} | ${strip.total_leds} LEDs | ${scanlineCount} scanlines</span>
+        <span class="pm-strip-summary">Out ${strip.output}+${strip.output_offset} | ${strip.total_leds} LEDs | ${lineCount} lines</span>
         <button class="pm-strip-delete" data-strip-id="${strip.id}">Delete</button>
       </div>
       <div class="pm-strip-body">
@@ -1058,68 +1057,42 @@ function renderStripList(pixelMap, slColorMap) {
             <label>Output Offset</label>
             <input type="number" data-field="output_offset" value="${strip.output_offset}" min="0" max="2400" step="1">
           </div>
-          <div class="pm-field">
-            <label>Total LEDs</label>
-            <input type="number" data-field="total_leds" value="${strip.total_leds}" min="0" max="2400" step="1">
-          </div>
         </div>
 
-        <div class="pm-section-label">Scanlines</div>
-        <table class="pm-sub-table pm-scanline-table">
+        <div class="pm-section-label">Lines</div>
+        <table class="pm-sub-table pm-line-table">
           <thead>
-            <tr><th></th><th>Start X</th><th>Start Y</th><th>End X</th><th>End Y</th><th>LEDs</th><th></th></tr>
+            <tr><th></th><th>Start X</th><th>Start Y</th><th>End X</th><th>End Y</th><th>Color Order</th><th>LEDs</th><th></th></tr>
           </thead>
           <tbody></tbody>
         </table>
-        <button class="pm-add-row-btn pm-add-scanline" data-strip-id="${strip.id}">+ Scanline</button>
-
-        <div class="pm-section-label">Segments</div>
-        <table class="pm-sub-table pm-segment-table">
-          <thead>
-            <tr><th>Range Start</th><th>Range End</th><th>Color Order</th><th></th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-        <button class="pm-add-row-btn pm-add-segment" data-strip-id="${strip.id}">+ Segment</button>
+        <button class="pm-add-row-btn pm-add-line" data-strip-id="${strip.id}">+ Line</button>
       </div>
     `;
     container.appendChild(card);
 
-    // Populate scanline rows
-    const scanTbody = card.querySelector('.pm-scanline-table tbody');
-    for (let si = 0; si < (strip.scanlines || []).length; si++) {
-      const sc = strip.scanlines[si];
-      const ledCount = Math.abs(sc.end[0] - sc.start[0]) + Math.abs(sc.end[1] - sc.start[1]) + 1;
-      const slKey = `${strip.id}-${si}`;
-      const slColor = (slColorMap && slColorMap[slKey]) || '#888';
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td><span class="pm-scanline-swatch" style="background:${slColor}" title="Scanline ${si}"></span></td>
-        <td><input type="number" data-idx="${si}" data-coord="sx" value="${sc.start[0]}" min="0" max="999"></td>
-        <td><input type="number" data-idx="${si}" data-coord="sy" value="${sc.start[1]}" min="0" max="9999"></td>
-        <td><input type="number" data-idx="${si}" data-coord="ex" value="${sc.end[0]}" min="0" max="999"></td>
-        <td><input type="number" data-idx="${si}" data-coord="ey" value="${sc.end[1]}" min="0" max="9999"></td>
-        <td class="pm-led-count">${ledCount}</td>
-        <td><button class="pm-row-delete" data-idx="${si}" data-type="scanline">&#x2715;</button></td>
-      `;
-      scanTbody.appendChild(row);
-    }
-
-    // Populate segment rows
-    const segTbody = card.querySelector('.pm-segment-table tbody');
-    for (let si = 0; si < (strip.segments || []).length; si++) {
-      const seg = strip.segments[si];
+    // Populate line rows
+    const lineTbody = card.querySelector('.pm-line-table tbody');
+    for (let li = 0; li < (strip.lines || []).length; li++) {
+      const ln = strip.lines[li];
+      const ledCount = Math.abs(ln.end[0] - ln.start[0]) + Math.abs(ln.end[1] - ln.start[1]) + 1;
+      const lnKey = `${strip.id}-${li}`;
+      const lnClr = (lnColorMap && lnColorMap[lnKey]) || '#888';
       const colorOpts = COLOR_ORDERS.map(o =>
-        `<option value="${o}" ${o === seg.color_order ? 'selected' : ''}>${o}</option>`
+        `<option value="${o}" ${o === (ln.color_order || 'BGR') ? 'selected' : ''}>${o}</option>`
       ).join('');
       const row = document.createElement('tr');
       row.innerHTML = `
-        <td><input type="number" data-idx="${si}" data-field="range_start" value="${seg.range_start}" min="0" max="9999"></td>
-        <td><input type="number" data-idx="${si}" data-field="range_end" value="${seg.range_end}" min="0" max="9999"></td>
-        <td><select data-idx="${si}" data-field="color_order">${colorOpts}</select></td>
-        <td><button class="pm-row-delete" data-idx="${si}" data-type="segment">&#x2715;</button></td>
+        <td><span class="pm-line-swatch" style="background:${lnClr}" title="Line ${li}"></span></td>
+        <td><input type="number" data-idx="${li}" data-coord="sx" value="${ln.start[0]}" min="0" max="999"></td>
+        <td><input type="number" data-idx="${li}" data-coord="sy" value="${ln.start[1]}" min="0" max="9999"></td>
+        <td><input type="number" data-idx="${li}" data-coord="ex" value="${ln.end[0]}" min="0" max="999"></td>
+        <td><input type="number" data-idx="${li}" data-coord="ey" value="${ln.end[1]}" min="0" max="9999"></td>
+        <td><select data-idx="${li}" data-field="color_order">${colorOpts}</select></td>
+        <td class="pm-led-count">${ledCount}</td>
+        <td><button class="pm-row-delete" data-idx="${li}" data-type="line">&#x2715;</button></td>
       `;
-      segTbody.appendChild(row);
+      lineTbody.appendChild(row);
     }
 
     // Wire up events for this card
@@ -1159,30 +1132,20 @@ function wireStripCardEvents(card, stripId) {
     input.addEventListener('change', () => { clearTimeout(debounce); saveFullStrip(card, stripId); });
   });
 
-  // Scanline input changes — debounced save
-  card.querySelectorAll('.pm-scanline-table input').forEach(input => {
+  // Line input changes — debounced save
+  card.querySelectorAll('.pm-line-table input, .pm-line-table select').forEach(input => {
     let debounce = null;
     input.addEventListener('input', () => {
-      // Update LED count display
+      // Update LED count display if it's a coordinate input
       const row = input.closest('tr');
-      updateScanlineLedCount(row);
+      updateLineLedCount(row);
       clearTimeout(debounce);
       debounce = setTimeout(() => saveFullStrip(card, stripId), 500);
     });
     input.addEventListener('change', () => { clearTimeout(debounce); saveFullStrip(card, stripId); });
   });
 
-  // Segment input changes — debounced save
-  card.querySelectorAll('.pm-segment-table input, .pm-segment-table select').forEach(input => {
-    let debounce = null;
-    input.addEventListener('input', () => {
-      clearTimeout(debounce);
-      debounce = setTimeout(() => saveFullStrip(card, stripId), 500);
-    });
-    input.addEventListener('change', () => { clearTimeout(debounce); saveFullStrip(card, stripId); });
-  });
-
-  // Delete scanline/segment row
+  // Delete line row
   card.querySelectorAll('.pm-row-delete').forEach(btn => {
     btn.addEventListener('click', () => {
       btn.closest('tr').remove();
@@ -1190,54 +1153,30 @@ function wireStripCardEvents(card, stripId) {
     });
   });
 
-  // Add scanline
-  card.querySelector('.pm-add-scanline').addEventListener('click', () => {
-    const tbody = card.querySelector('.pm-scanline-table tbody');
-    const idx = tbody.querySelectorAll('tr').length;
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><input type="number" data-idx="${idx}" data-coord="sx" value="0" min="0" max="999"></td>
-      <td><input type="number" data-idx="${idx}" data-coord="sy" value="0" min="0" max="9999"></td>
-      <td><input type="number" data-idx="${idx}" data-coord="ex" value="0" min="0" max="999"></td>
-      <td><input type="number" data-idx="${idx}" data-coord="ey" value="0" min="0" max="9999"></td>
-      <td class="pm-led-count">1</td>
-      <td><button class="pm-row-delete" data-idx="${idx}" data-type="scanline">&#x2715;</button></td>
-    `;
-    tbody.appendChild(row);
-    // Wire events for new row
-    row.querySelectorAll('input').forEach(input => {
-      let debounce = null;
-      input.addEventListener('input', () => {
-        updateScanlineLedCount(row);
-        clearTimeout(debounce);
-        debounce = setTimeout(() => saveFullStrip(card, stripId), 500);
-      });
-      input.addEventListener('change', () => { clearTimeout(debounce); saveFullStrip(card, stripId); });
-    });
-    row.querySelector('.pm-row-delete').addEventListener('click', () => {
-      row.remove();
-      saveFullStrip(card, stripId);
-    });
-  });
-
-  // Add segment
-  card.querySelector('.pm-add-segment').addEventListener('click', () => {
-    const tbody = card.querySelector('.pm-segment-table tbody');
+  // Add line
+  card.querySelector('.pm-add-line').addEventListener('click', () => {
+    const tbody = card.querySelector('.pm-line-table tbody');
     const idx = tbody.querySelectorAll('tr').length;
     const colorOpts = COLOR_ORDERS.map(o =>
       `<option value="${o}" ${o === 'BGR' ? 'selected' : ''}>${o}</option>`
     ).join('');
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td><input type="number" data-idx="${idx}" data-field="range_start" value="0" min="0" max="9999"></td>
-      <td><input type="number" data-idx="${idx}" data-field="range_end" value="0" min="0" max="9999"></td>
+      <td></td>
+      <td><input type="number" data-idx="${idx}" data-coord="sx" value="0" min="0" max="999"></td>
+      <td><input type="number" data-idx="${idx}" data-coord="sy" value="0" min="0" max="9999"></td>
+      <td><input type="number" data-idx="${idx}" data-coord="ex" value="0" min="0" max="999"></td>
+      <td><input type="number" data-idx="${idx}" data-coord="ey" value="0" min="0" max="9999"></td>
       <td><select data-idx="${idx}" data-field="color_order">${colorOpts}</select></td>
-      <td><button class="pm-row-delete" data-idx="${idx}" data-type="segment">&#x2715;</button></td>
+      <td class="pm-led-count">1</td>
+      <td><button class="pm-row-delete" data-idx="${idx}" data-type="line">&#x2715;</button></td>
     `;
     tbody.appendChild(row);
+    // Wire events for new row
     row.querySelectorAll('input, select').forEach(input => {
       let debounce = null;
       input.addEventListener('input', () => {
+        updateLineLedCount(row);
         clearTimeout(debounce);
         debounce = setTimeout(() => saveFullStrip(card, stripId), 500);
       });
@@ -1250,7 +1189,7 @@ function wireStripCardEvents(card, stripId) {
   });
 }
 
-function updateScanlineLedCount(row) {
+function updateLineLedCount(row) {
   const inputs = row.querySelectorAll('input[type="number"]');
   if (inputs.length < 4) return;
   const sx = parseInt(inputs[0].value) || 0;
@@ -1268,35 +1207,25 @@ function readStripFromCard(card) {
   // Read top-level fields
   const output = parseInt(card.querySelector('input[data-field="output"]').value) || 0;
   const outputOffset = parseInt(card.querySelector('input[data-field="output_offset"]').value) || 0;
-  const totalLeds = parseInt(card.querySelector('input[data-field="total_leds"]').value) || 0;
 
-  // Read scanlines
-  const scanlines = [];
-  card.querySelectorAll('.pm-scanline-table tbody tr').forEach(row => {
+  // Read lines
+  const lines = [];
+  card.querySelectorAll('.pm-line-table tbody tr').forEach(row => {
     const inputs = row.querySelectorAll('input[type="number"]');
     if (inputs.length < 4) return;
-    scanlines.push({
+    const colorOrder = row.querySelector('select[data-field="color_order"]')?.value || 'BGR';
+    lines.push({
       start: [parseInt(inputs[0].value) || 0, parseInt(inputs[1].value) || 0],
       end: [parseInt(inputs[2].value) || 0, parseInt(inputs[3].value) || 0],
+      color_order: colorOrder,
     });
-  });
-
-  // Read segments
-  const segments = [];
-  card.querySelectorAll('.pm-segment-table tbody tr').forEach(row => {
-    const rangeStart = parseInt(row.querySelector('input[data-field="range_start"]')?.value) || 0;
-    const rangeEnd = parseInt(row.querySelector('input[data-field="range_end"]')?.value) || 0;
-    const colorOrder = row.querySelector('select[data-field="color_order"]')?.value || 'BGR';
-    segments.push({ range_start: rangeStart, range_end: rangeEnd, color_order: colorOrder });
   });
 
   return {
     id: stripId,
     output,
     output_offset: outputOffset,
-    total_leds: totalLeds,
-    scanlines,
-    segments,
+    lines,
   };
 }
 
@@ -1364,9 +1293,7 @@ function initSetup() {
       id: nextId,
       output: 0,
       output_offset: 0,
-      total_leds: 172,
-      scanlines: [{ start: [nextId, 0], end: [nextId, 171] }],
-      segments: [{ range_start: 0, range_end: 171, color_order: 'BGR' }],
+      lines: [{ start: [nextId, 0], end: [nextId, 171], color_order: 'BGR' }],
     };
 
     const result = await api('POST', '/api/pixel-map/strips', newStrip);
@@ -1502,11 +1429,11 @@ async function loadSimStripLabels() {
   for (const strip of data.strips) {
     const div = document.createElement('div');
     div.className = 'sim-strip-label';
-    // Infer direction from first scanline: if start Y < end Y, it goes up (bottom-to-top)
+    // Infer direction from first line: if start Y < end Y, it goes up (bottom-to-top)
     let arrow = '\u2193';
-    if (strip.scanlines && strip.scanlines.length > 0) {
-      const sc = strip.scanlines[0];
-      arrow = sc.start[1] < sc.end[1] ? '\u2191' : '\u2193';
+    if (strip.lines && strip.lines.length > 0) {
+      const ln = strip.lines[0];
+      arrow = ln.start[1] < ln.end[1] ? '\u2191' : '\u2193';
     }
     div.innerHTML = `S${strip.id}<br>${arrow}`;
     container.appendChild(div);

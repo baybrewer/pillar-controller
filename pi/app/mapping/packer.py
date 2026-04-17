@@ -2,7 +2,7 @@
 Output packer — maps rendered grid frame to serialized LED output buffer.
 
 Uses the reverse LUT from CompiledPixelMap to read each LED's pixel
-from the rendered frame, apply per-segment color order swizzle, and
+from the rendered frame, apply per-line color order swizzle, and
 write to the correct position in the output buffer.
 """
 

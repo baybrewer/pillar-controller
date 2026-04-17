@@ -944,8 +944,8 @@ input:focus-visible {
   color: var(--accent);
 }
 
-/* Scanline color swatch in setup table */
-.pm-scanline-swatch {
+/* Line color swatch in setup table */
+.pm-line-swatch {
   display: inline-block;
   width: 14px;
   height: 14px;
@@ -1115,7 +1115,7 @@ input:focus-visible {
   width: 100%;
 }
 
-/* Scanline and segment tables */
+/* Line tables */
 .pm-sub-table {
   width: 100%;
   border-collapse: collapse;

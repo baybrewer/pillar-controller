@@ -10,8 +10,7 @@ import pytest
 from app.config.pixel_map import (
   CompiledPixelMap,
   PixelMapConfig,
-  ScanlineConfig,
-  SegmentConfig,
+  LineConfig,
   StripConfig,
   compile_pixel_map,
 )
@@ -23,8 +22,8 @@ def _simple_compiled() -> CompiledPixelMap:
   2x3 grid with 1 strip of 6 LEDs (BGR order), compiled via compile_pixel_map.
 
   Strip 0: output 0, offset 0, 6 LEDs, BGR color order.
-    Scanline 0: col 0 going up — (0,0) → (0,2) = 3 LEDs
-    Scanline 1: col 1 going down — (1,2) → (1,0) = 3 LEDs
+    Line 0: col 0 going up — (0,0) -> (0,2) = 3 LEDs
+    Line 1: col 1 going down — (1,2) -> (1,0) = 3 LEDs
   """
   config = PixelMapConfig(
     origin="bottom-left",
@@ -38,13 +37,9 @@ def _simple_compiled() -> CompiledPixelMap:
         id=0,
         output=0,
         output_offset=0,
-        total_leds=6,
-        segments=[
-          SegmentConfig(range_start=0, range_end=5, color_order="BGR"),
-        ],
-        scanlines=[
-          ScanlineConfig(start=(0, 0), end=(0, 2)),
-          ScanlineConfig(start=(1, 2), end=(1, 0)),
+        lines=[
+          LineConfig(start=(0, 0), end=(0, 2), color_order="BGR"),
+          LineConfig(start=(1, 2), end=(1, 0), color_order="BGR"),
         ],
         pixel_overrides={},
       ),
@@ -54,7 +49,7 @@ def _simple_compiled() -> CompiledPixelMap:
 
 
 class TestPacker:
-  """Output packer: grid frame → wire buffer."""
+  """Output packer: grid frame -> wire buffer."""
 
   def test_basic_packing(self):
     """2x3 all-red frame produces correct output buffer length."""
@@ -64,14 +59,14 @@ class TestPacker:
     buf = pack_frame(frame, pm)
     # 6 LEDs x 3 bytes = 18 bytes minimum for output 0
     assert len(buf) >= 18
-    # BGR order: red RGB [255, 0, 0] → wire bytes [0, 0, 255]
+    # BGR order: red RGB [255, 0, 0] -> wire bytes [0, 0, 255]
     # LED 0 at (0,0): B=0, G=0, R=255
     assert buf[0] == 0    # B
     assert buf[1] == 0    # G
     assert buf[2] == 255  # R
 
   def test_color_order_swizzle(self):
-    """GRB order: frame pixel [255, 128, 64] (RGB) → wire bytes [128, 255, 64] (GRB)."""
+    """GRB order: frame pixel [255, 128, 64] (RGB) -> wire bytes [128, 255, 64] (GRB)."""
     config = PixelMapConfig(
       origin="bottom-left",
       teensy_outputs=8,
@@ -84,9 +79,7 @@ class TestPacker:
           id=0,
           output=0,
           output_offset=0,
-          total_leds=1,
-          segments=[SegmentConfig(range_start=0, range_end=0, color_order="GRB")],
-          scanlines=[ScanlineConfig(start=(0, 0), end=(0, 0))],
+          lines=[LineConfig(start=(0, 0), end=(0, 0), color_order="GRB")],
           pixel_overrides={},
         ),
       ],
@@ -114,18 +107,14 @@ class TestPacker:
           id=0,
           output=0,
           output_offset=0,
-          total_leds=1,
-          segments=[SegmentConfig(range_start=0, range_end=0, color_order="RGB")],
-          scanlines=[ScanlineConfig(start=(0, 0), end=(0, 0))],
+          lines=[LineConfig(start=(0, 0), end=(0, 0), color_order="RGB")],
           pixel_overrides={},
         ),
         StripConfig(
           id=1,
           output=2,
           output_offset=0,
-          total_leds=1,
-          segments=[SegmentConfig(range_start=0, range_end=0, color_order="RGB")],
-          scanlines=[ScanlineConfig(start=(1, 0), end=(1, 0))],
+          lines=[LineConfig(start=(1, 0), end=(1, 0), color_order="RGB")],
           pixel_overrides={},
         ),
       ],
@@ -138,7 +127,7 @@ class TestPacker:
     # Output 0: 1 LED = 3 bytes, Output 1: 0 LEDs, Output 2: 1 LED = 3 bytes
     # Total = (1 + 0 + 1) * 3 = 6 bytes for outputs 0-2 only
     # But buffer should cover all outputs 0 through max used (2), so:
-    # pin 0: 1 LED, pin 1: 0 LEDs, pin 2: 1 LED → 3 + 0 + 3 = 6 bytes
+    # pin 0: 1 LED, pin 1: 0 LEDs, pin 2: 1 LED -> 3 + 0 + 3 = 6 bytes
     assert len(buf) == 6
     # Output 0 pixel at offset 0: [10, 20, 30] (RGB order)
     assert buf[0] == 10
@@ -163,9 +152,7 @@ class TestPacker:
           id=0,
           output=0,
           output_offset=0,
-          total_leds=1,
-          segments=[SegmentConfig(range_start=0, range_end=0, color_order="RGB")],
-          scanlines=[ScanlineConfig(start=(0, 0), end=(0, 0))],
+          lines=[LineConfig(start=(0, 0), end=(0, 0), color_order="RGB")],
           pixel_overrides={},
         ),
       ],
@@ -173,7 +160,7 @@ class TestPacker:
     pm = compile_pixel_map(config)
     frame = np.full((1, 1, 3), 255, dtype=np.uint8)
     buf = pack_frame(frame, pm)
-    # (0,0) is mapped → should contain [255, 255, 255]
+    # (0,0) is mapped -> should contain [255, 255, 255]
     assert buf[0] == 255
     assert buf[1] == 255
     assert buf[2] == 255

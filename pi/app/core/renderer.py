@@ -291,10 +291,10 @@ class Renderer:
           logical_frame[:] = 0  # black out everything
           for strip in self.pixel_map.strips:
             if strip.id == self._test_strip_id:
-              # Find the x-column this strip occupies from its scanlines
+              # Find the x-column this strip occupies from its lines
               positions = []
-              for sc in strip.scanlines:
-                positions.extend(sc.positions())
+              for ln in strip.lines:
+                positions.extend(ln.positions())
               if positions:
                 col = positions[0][0]
                 if col < logical_frame.shape[0]:

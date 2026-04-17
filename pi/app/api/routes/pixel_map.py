@@ -1,5 +1,5 @@
 """
-Pixel Map API routes — CRUD for strips, scanlines, segments, origin, validation.
+Pixel Map API routes — CRUD for strips, lines, origin, validation.
 
 All mutations use a staged-edit pattern:
   1. Deep-copy the live config
@@ -18,8 +18,7 @@ from pydantic import BaseModel
 from ...config.pixel_map import (
   PixelMapConfig,
   StripConfig,
-  SegmentConfig,
-  ScanlineConfig,
+  LineConfig,
   CompiledPixelMap,
   validate_pixel_map,
   compile_pixel_map,
@@ -33,14 +32,9 @@ logger = logging.getLogger(__name__)
 # Request models
 # ---------------------------------------------------------------------------
 
-class ScanlineRequest(BaseModel):
+class LineRequest(BaseModel):
   start: list[int]  # [x, y]
   end: list[int]    # [x, y]
-
-
-class SegmentRequest(BaseModel):
-  range_start: int
-  range_end: int
   color_order: str = "BGR"
 
 
@@ -48,9 +42,7 @@ class StripRequest(BaseModel):
   id: int
   output: int = 0
   output_offset: int = 0
-  total_leds: int = 0
-  segments: list[SegmentRequest] = []
-  scanlines: list[ScanlineRequest] = []
+  lines: list[LineRequest] = []
   pixel_overrides: dict[str, list[int]] = {}  # {"led_index": [x, y]}
 
 
@@ -68,21 +60,13 @@ def _strip_from_request(req: StripRequest) -> StripConfig:
     id=req.id,
     output=req.output,
     output_offset=req.output_offset,
-    total_leds=req.total_leds,
-    segments=[
-      SegmentConfig(
-        range_start=s.range_start,
-        range_end=s.range_end,
-        color_order=s.color_order,
+    lines=[
+      LineConfig(
+        start=tuple(ln.start),
+        end=tuple(ln.end),
+        color_order=ln.color_order,
       )
-      for s in req.segments
-    ],
-    scanlines=[
-      ScanlineConfig(
-        start=tuple(s.start),
-        end=tuple(s.end),
-      )
-      for s in req.scanlines
+      for ln in req.lines
     ],
     pixel_overrides={int(k): tuple(v) for k, v in req.pixel_overrides.items()},
   )
@@ -97,20 +81,13 @@ def _config_to_response(config: PixelMapConfig, compiled: CompiledPixelMap) -> d
       "output": s.output,
       "output_offset": s.output_offset,
       "total_leds": s.total_leds,
-      "segments": [
+      "lines": [
         {
-          "range_start": seg.range_start,
-          "range_end": seg.range_end,
-          "color_order": seg.color_order,
+          "start": list(ln.start),
+          "end": list(ln.end),
+          "color_order": ln.color_order,
         }
-        for seg in s.segments
-      ],
-      "scanlines": [
-        {
-          "start": list(sc.start),
-          "end": list(sc.end),
-        }
-        for sc in s.scanlines
+        for ln in s.lines
       ],
       "pixel_overrides": [
         {"led_index": idx, "position": list(pos)}
